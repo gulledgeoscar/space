@@ -7,7 +7,7 @@ import {
   BoxGeometry, IcosahedronGeometry,
   Vector3, Quaternion, Color, DirectionalLight, HemisphereLight, AmbientLight, PMREMGenerator,
   Line, BufferGeometry, Float32BufferAttribute, LineBasicMaterial, Mesh, SphereGeometry,
-  MeshBasicMaterial, AdditiveBlending, Group, ConeGeometry, LineDashedMaterial,
+  MeshBasicMaterial, AdditiveBlending, Group, LineDashedMaterial, LineSegments,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RenderPipeline } from './renderer.js';
@@ -136,11 +136,23 @@ export class Game {
     this.scene.add(this.caMarker);
     this.trajTimer = 0;
     this.trajData = null;
-    // approach corridor cone (10 deg half-angle, 200 m)
-    const cone = new Mesh(new ConeGeometry(Math.tan(10 * Math.PI / 180) * 200, 200, 32, 1, true),
-      new MeshBasicMaterial({ color: new Color(0.2, 0.9, 0.5), wireframe: true, transparent: true, opacity: 0.08, depthWrite: false }));
-    cone.rotation.x = -Math.PI / 2;
-    cone.position.z = 5.25 + 100;
+    // approach corridor (10 deg half-angle, 200 m): gate rings + 4 rails
+    const verts = [], tan = Math.tan(10 * Math.PI / 180), seg = 48;
+    for (const d of [10, 30, 60, 100, 150, 200]) {
+      const rr = Math.max(0.6, d * tan), z = 5.25 + d;
+      for (let i = 0; i < seg; i++) {
+        const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+        verts.push(Math.cos(a0) * rr, Math.sin(a0) * rr, z, Math.cos(a1) * rr, Math.sin(a1) * rr, z);
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      verts.push(Math.cos(a) * 0.6, Math.sin(a) * 0.6, 5.25 + 10 * 0.6 / (10 * tan), Math.cos(a) * 200 * tan, Math.sin(a) * 200 * tan, 205.25);
+    }
+    const cg = new BufferGeometry();
+    cg.setAttribute('position', new Float32BufferAttribute(verts, 3));
+    const cone = new LineSegments(cg, new LineBasicMaterial({ color: new Color(0.25, 0.85, 0.5), transparent: true, opacity: 0.22, depthWrite: false }));
+    cone.frustumCulled = false;
     this.corridor = cone;
     this.meridianModel.root.add(cone);
   }

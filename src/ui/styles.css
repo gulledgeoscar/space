@@ -192,6 +192,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
   .hud .row { line-height: 1.32; }
   .hud .lm { top: 112px; min-width: 210px; }
   .hud .bl, .hud .tl { min-width: 210px; }
+  .hud .tl { max-width: 240px; }
+  .phase .sub { font-size: 11px; letter-spacing: 0.08em; }
   .hud .br { min-width: 250px; }
   .hud .row .v { min-width: 70px; }
   .phase .name { font-size: 16px; }

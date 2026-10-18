@@ -43,8 +43,7 @@ export class FreeDockMission extends Mission {
     K.body.setAngularVelocity(new Vector3(rnd(-0.01, 0.01), rnd(-0.01, 0.01), rnd(-0.02, 0.02)));
     K.fuel = K.capacity * rnd(0.12, 0.45);
     K.body.savePrev(); W.meridian.body.savePrev();
-    g.mode = 'flight';
-    g.pilot.setCamera('chase');
+    g.enterFlight('chase', { blend: false });
     this.params = { planet: planet.name, spin: spinRpm, range, fuel: K.fuel };
     this.director = new DockingDirector(this, { onHardDock: (e) => this.onDocked(e) });
     this.objectives('FREE DOCK', `${planet.name} orbit · ${spinRpm.toFixed(1)} RPM · ${range.toFixed(0)} m`, [['dock', 'Dock with the Meridian hub port'], ['fast', 'Bonus: under 4 minutes']]);

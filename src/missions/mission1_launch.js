@@ -81,8 +81,7 @@ export class LaunchMission extends Mission {
     this.padHold = true;
     this.holdOnPad(0);
     W.preStep.push((dt) => { if (this.padHold) this.holdOnPad(dt); });
-    g.mode = 'flight';
-    g.pilot.setCamera('chase');
+    g.enterFlight('chase', { blend: false });
     g.pilot.chase.dist = 95; g.pilot.chase.pitch = 0.1; g.pilot.chase.yaw = 0.7;
     g.pilot._frame = null;
     g.pilot.lockControls = true;
@@ -207,8 +206,7 @@ export class LaunchMission extends Mission {
     K.gearDown = false;
     pointKestrel(W, K.body.pos.clone().add(st.vel), K.body.pos.clone().negate());
     this.setupMeridian(th + 0.21);
-    g.mode = 'flight';
-    g.pilot.setCamera('chase');
+    g.enterFlight('chase', { blend: false });
     this.complete('startup'); this.complete('ascent');
     this.phaseName = 'orbit';
     this.enterOrbitPhase();
@@ -222,8 +220,7 @@ export class LaunchMission extends Mission {
     K.gearDown = false;
     placeKestrelLvlh(W, new Vector3(-90, -1900, 25), new Vector3(0, 0, 0));
     pointKestrel(W, W.meridian.portWorld(new Vector3()), W.meridian.body.pos.clone().normalize());
-    g.mode = 'flight';
-    g.pilot.setCamera('chase');
+    g.enterFlight('chase', { blend: false });
     ['startup', 'ascent', 'orbit', 'rendezvous'].forEach((i) => this.complete(i));
     this.phaseName = 'prox';
     this.beginProximity(final);
