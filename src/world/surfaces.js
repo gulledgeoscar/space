@@ -209,3 +209,152 @@ export class EarthPad extends Surface {
   }
   fogDensity(alt) { return 0.000035 * Math.exp(-alt / 6000); }
 }
+
+// ---------------------------------------------------------------------------
+// Pelagia: knee-deep ocean over a sandy shelf, the SOUNDER-3 beacon, and
+// the tidal surge.
+import { OceanShader } from '../shaders/ocean.js';
+
+export class OceanSurface extends Surface {
+  constructor(game, planet, siteNormal) {
+    super(game, planet, { patch: 32000 });
+    this.nFixed.copy(siteNormal).normalize();
+    this.updateBasis(game.world.time);
+    this.fogColor.setRGB(0.42, 0.52, 0.55);
+    this.depth = 0.55;
+    // seabed
+    const bed = new Mesh(this.terrainGeometry((x, z) => { const n = fbm2(x * 0.01, z * 0.01, 3); return [0.42 + n * 0.1, 0.4 + n * 0.08, 0.33]; }), new MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    bed.receiveShadow = true;
+    this.group.add(bed);
+    // water: same ring layout, flat (surge added in the shader)
+    const self = this;
+    const saveH = this.height;
+    this.height = () => 0;
+    const wg = this.terrainGeometry(() => [1, 1, 1]);
+    this.height = saveH;
+    const u = OceanShader.uniforms;
+    this.waterMat = new ShaderMaterial({
+      uniforms: {
+        ...Object.fromEntries(Object.entries(u).map(([k, v]) => [k, { value: v.value }])),
+      },
+      vertexShader: OceanShader.vertexShader, fragmentShader: OceanShader.fragmentShader,
+      transparent: true, depthWrite: true, extensions: { derivatives: true },
+    });
+    const wu = this.waterMat.uniforms;
+    wu.uWaveDir.value = new Vector3(1, 0, 0);
+    wu.uWaveDir.value = { x: -0.8, y: 0.6, isVector2: true };
+    wu.uSunDir.value = new Vector3(0, 1, 0);
+    wu.uSunColor.value = new Color(1.0, 0.82, 0.62);
+    wu.uSkyColor.value = new Color(0.45, 0.55, 0.6);
+    wu.uDeep.value = new Color(0.03, 0.12, 0.15);
+    wu.uShallow.value = new Color(0.16, 0.3, 0.3);
+    wu.uFogColor.value = this.fogColor;
+    wu.uCamPos.value = new Vector3();
+    wu.uR.value = planet.radius;
+    this.water = new Mesh(wg, this.waterMat);
+    this.water.renderOrder = 2;
+    this.water.frustumCulled = false;
+    this.group.add(this.water);
+    this.surge = { active: false, front: -60000, speed: 0, H: 1180, W: 1600, dir: { x: -0.8, z: 0.6 } };
+    // rocks / ripples for scale
+    const M = materials();
+    const b = new GeoBatch();
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * 6.28, r = 40 + Math.random() * 900;
+      b.add(new IcosahedronGeometry(0.4 + Math.random() * 1.6, 0), M.hullDark, new Vector3(Math.cos(a) * r, -this.depth + 0.2, Math.sin(a) * r), { x: Math.random(), y: Math.random(), z: Math.random() }, 1);
+    }
+    this.group.add(b.build());
+    void self;
+  }
+  height(x, z) { return -this.depth + (fbm2(x * 0.02, z * 0.02, 3) - 0.5) * 0.25; }
+  surgeHeight(x, z) {
+    const s = this.surge;
+    if (!s.active && s.front < -50000) return 0;
+    const d = s.front - (x * s.dir.x + z * s.dir.z);
+    const k = d < 0 ? Math.exp(-Math.pow(d / (s.W * 0.35), 2)) : Math.exp(-Math.pow(d / (s.W * 1.6), 2));
+    return s.H * k;
+  }
+  waterLevel(x, z) { return this.surgeHeight(x, z); }
+  startSurge(distance = 9000, speed = 70) { this.surge.active = true; this.surge.front = -distance; this.surge.speed = speed; }
+  // where the surge front is relative to a local point (negative = still coming)
+  surgeArrival(x, z) { const s = this.surge; return (s.front - (x * s.dir.x + z * s.dir.z)) / Math.max(1, s.speed); }
+  fogDensity(alt) { return 0.00011 * Math.exp(-alt / 5000) + 0.00001; }
+  update(dt, origin) {
+    super.update(dt, origin);
+    const s = this.surge;
+    if (s.active) s.front += s.speed * this.game.simDt;
+    const u = this.waterMat.uniforms;
+    u.uTime.value += dt;
+    u.uWaveFront.value = s.front;
+    u.uWaveDir.value = { x: s.dir.x, y: s.dir.z, isVector2: true };
+    u.uWaveH.value = s.H; u.uWaveW.value = s.W;
+    const cam = this.game.pipeline.camInertialPos;
+    this.toLocal(cam, u.uCamPos.value);
+    this.localDir(this.game.sky.lightDir, u.uSunDir.value).normalize();
+    u.uFogDensity.value = this.sceneFog.density;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skadi: ice plains and pressure ridges, fog, snow and frozen clouds.
+export class IceSurface extends Surface {
+  constructor(game, planet, siteNormal) {
+    super(game, planet, { patch: 26000 });
+    this.nFixed.copy(siteNormal).normalize();
+    this.updateBasis(game.world.time);
+    this.fogColor.setRGB(0.72, 0.78, 0.85);
+    const ground = new Mesh(this.terrainGeometry((x, z) => {
+      const h = this.height(x, z);
+      const r = 0.82 + fbm2(x * 0.004, z * 0.004, 3) * 0.12;
+      const blue = Math.max(0, Math.min(1, (h - 2) / 40));
+      return [r * (0.92 - blue * 0.3), r * (0.95 - blue * 0.15), r];
+    }), new MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0 }));
+    ground.receiveShadow = true;
+    this.group.add(ground);
+    // frozen clouds: sculpted ice masses hanging in the thin air
+    const M = materials();
+    const ice = new MeshStandardMaterial({ color: 0xdfe9f2, roughness: 0.35, metalness: 0.05, transparent: true, opacity: 0.94 });
+    const b = new GeoBatch();
+    for (let c = 0; c < 18; c++) {
+      const a = Math.random() * 6.28, r = 900 + Math.random() * 9000;
+      const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = 260 + Math.random() * 600;
+      for (let k = 0; k < 9; k++) b.add(new IcosahedronGeometry(40 + Math.random() * 120, 1), ice, new Vector3(cx + (Math.random() - 0.5) * 300, cy + (Math.random() - 0.5) * 60, cz + (Math.random() - 0.5) * 300), { x: Math.random(), y: Math.random(), z: Math.random() }, new Vector3(1, 0.35 + Math.random() * 0.3, 1));
+    }
+    const clouds = b.build({ castShadow: true });
+    this.group.add(clouds);
+    // snow around the camera
+    const N = 4000;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 120; pos[i * 3 + 1] = Math.random() * 60; pos[i * 3 + 2] = (Math.random() - 0.5) * 120; }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+    this.snow = new Points(g, new PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.snow.frustumCulled = false;
+    this.group.add(this.snow);
+    this.snowPos = pos;
+    this.wind = new Vector3(4, -1.5, 1.5);
+  }
+  height(x, z) {
+    const ridges = Math.pow(1 - Math.abs(vnoise(x * 0.0016, z * 0.0016) * 2 - 1), 4) * 38;
+    const roll = (fbm2(x * 0.0006, z * 0.0006, 4) - 0.5) * 60;
+    // a flat landing plain around the site
+    const r = Math.hypot(x, z);
+    const flat = Math.min(1, Math.max(0, (r - 250) / 900));
+    return (roll + ridges) * flat + (fbm2(x * 0.05, z * 0.05, 2) - 0.5) * 0.4;
+  }
+  fogDensity(alt) { return 0.00028 * Math.exp(-alt / 3000) + 0.000015; }
+  update(dt, origin) {
+    super.update(dt, origin);
+    // snow box follows the camera in local coordinates
+    const cam = this.toLocal(this.game.pipeline.camInertialPos, new Vector3());
+    const p = this.snowPos;
+    for (let i = 0; i < p.length; i += 3) {
+      p[i] += this.wind.x * dt; p[i + 1] += this.wind.y * dt; p[i + 2] += this.wind.z * dt;
+      if (p[i] - cam.x > 60) p[i] -= 120; if (p[i] - cam.x < -60) p[i] += 120;
+      if (p[i + 2] - cam.z > 60) p[i + 2] -= 120; if (p[i + 2] - cam.z < -60) p[i + 2] += 120;
+      if (p[i + 1] - cam.y < -10) p[i + 1] += 60; if (p[i + 1] - cam.y > 50) p[i + 1] -= 60;
+    }
+    this.snow.geometry.attributes.position.needsUpdate = true;
+    this.snow.visible = Math.abs(cam.y) < 3000;
+  }
+}
