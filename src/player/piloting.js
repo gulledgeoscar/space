@@ -26,6 +26,10 @@ export const ATT_MODES = {
   Digit5: 'radial-out', Digit6: 'radial-in', Digit7: 'target', Digit8: 'anti-target', Digit9: 'port-align', Digit0: 'burn',
 };
 
+// default chase view: just behind and above the Kestrel, close enough to
+// read its attitude and see the RCS puffs
+export const CHASE_DEFAULT = { yaw: 0, pitch: 0.17, dist: 14 };
+
 export class PilotController {
   constructor(game) {
     this.game = game;
@@ -34,7 +38,8 @@ export class PilotController {
     this.attMode = null;
     this.killRot = false;
     this.killVel = false;
-    this.chase = { yaw: 0.35, pitch: 0.25, dist: 32 };
+    this.chase = { ...CHASE_DEFAULT };
+    this.chaseIdle = 0;
     this.look = { yaw: 0, pitch: 0 };
     this.camOff = new Vector3();
     this.camQuat = new Quaternion();
@@ -62,6 +67,7 @@ export class PilotController {
       if (this.camMode === 'chase') {
         this.chase.yaw -= mouse.x * 0.004 * sens;
         this.chase.pitch = MathUtils.clamp(this.chase.pitch + mouse.y * 0.004 * sens, -1.4, 1.4);
+        this.chaseIdle = 0;
       } else {
         this.look.yaw = MathUtils.clamp(this.look.yaw - mouse.x * 0.003 * sens, -2.2, 2.2);
         this.look.pitch = MathUtils.clamp(this.look.pitch - mouse.y * 0.003 * sens, -1.2, 1.2);
@@ -74,7 +80,14 @@ export class PilotController {
     const k = Math.exp(-dt / 0.18);
     this.stick.multiplyScalar(k);
     if (!look) { this.look.yaw *= Math.exp(-dt / 0.6); this.look.pitch *= Math.exp(-dt / 0.6); }
-    if (mouse.wheel && this.camMode === 'chase') this.chase.dist = MathUtils.clamp(this.chase.dist * (1 + mouse.wheel * 0.12), 8, 4000);
+    if (mouse.wheel && this.camMode === 'chase') this.chase.dist = MathUtils.clamp(this.chase.dist * (1 + mouse.wheel * 0.12), 6, 4000);
+    // after a few seconds without dragging, swing back behind the ship
+    this.chaseIdle += dt;
+    if (!look && this.chaseIdle > 3 && this.chase.dist < 60) {
+      const k = Math.min(1, dt * 0.8);
+      this.chase.yaw += (Math.atan2(Math.sin(CHASE_DEFAULT.yaw - this.chase.yaw), Math.cos(CHASE_DEFAULT.yaw - this.chase.yaw))) * k;
+      this.chase.pitch += (CHASE_DEFAULT.pitch - this.chase.pitch) * k;
+    }
 
     // while hard-docked: unstrap into the ship, or release the latches
     const D = this.world.docking;
@@ -292,7 +305,7 @@ export class PilotController {
     if (this.camMode === 'cockpit') {
       off.set(...KESTREL.eye).sub(K.comBody).applyQuaternion(kQuat);
       const look = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.look.yaw)
-        .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), this.look.pitch - 0.08));
+        .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), this.look.pitch - 0.1));
       quat.copy(kQuat).multiply(look);
     } else if (this.camMode === 'dock') {
       off.set(...KESTREL.dockCam).sub(K.comBody).applyQuaternion(kQuat);
@@ -307,8 +320,11 @@ export class PilotController {
       const frameQ = this.chaseFrame(kQuat, dt);
       off.applyQuaternion(frameQ);
       const up = new Vector3(0, 1, 0).applyQuaternion(frameQ);
-      const m4 = new Matrix4().lookAt(off, new Vector3(), up);
+      // aim a little above the ship so it sits in the lower part of the frame
+      const aim = up.clone().multiplyScalar(Math.min(this.chase.dist, 60) * 0.09);
+      const m4 = new Matrix4().lookAt(off, aim, up);
       quat.setFromRotationMatrix(m4);
+      fov = Math.min(fov, 62);
     }
     if (this.transition) {
       this.transition.t += dt;
@@ -326,15 +342,15 @@ export class PilotController {
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   }
 
-  // Chase camera reference frame: follows the Kestrel's heading but, near
-  // the spinning Meridian, rolls with the station so the port looks still.
+  // Chase camera reference frame: follows the Kestrel's attitude (lagged a
+  // little, so rotations read clearly); low over a planet it keeps the
+  // horizon level instead.
   chaseFrame(kQuat, dt) {
     const W = this.world;
     let target = kQuat;
     const K = W.kestrel.body;
     const alt = K.pos.length() - W.primary.radius;
-    if (W.meridianActive && W.docking.rel.range < 400) target = this.game.interpBodyQuat(W.meridian.body, new Quaternion());
-    else if (alt < 90000) {
+    if (alt < 90000) {
       // low over a planet: keep the horizon level (camera up = local vertical)
       const up = K.pos.clone().normalize();
       const nose = new Vector3(0, 0, -1).applyQuaternion(kQuat);

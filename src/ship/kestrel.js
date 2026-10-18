@@ -36,7 +36,7 @@ export const KESTREL = {
   rcs: { coarse: 2200, fine: 120, isp: 280 },
   dockZ: KESTREL_DOCK_Z,
   dockRingR: PORT_RING_R,
-  eye: [0, 0.95, -5.05],
+  eye: [0, 1.08, -5.0],
   dockCam: [0, 0.0, -6.95],
   noseRadius: 1.6,
   areas: { front: 6.5, side: 26, top: 46 },
