@@ -168,10 +168,16 @@ export class PilotController {
   }
 
   // The rotating reference the pilot wants to be still in: near the
-  // Meridian that is the station's spin, elsewhere inertial.
+  // Meridian that is the station's spin, elsewhere inertial. Only the spin
+  // about her axis is copied: the Kestrel is long and thin (Ix ~ 12 Iz), so
+  // copying a nutating station's small transverse omega would set it coning
+  // by ~10x that angle about its own L.
   referenceOmega(out) {
     const D = this.world.docking;
-    if (this.world.meridianActive && D.rel.range < 250) return out.copy(this.world.meridian.body.omega);
+    if (this.world.meridianActive && D.rel.range < 250) {
+      const S = this.world.meridian;
+      return S.axisWorld(out).multiplyScalar(S.spinRate);
+    }
     return out.set(0, 0, 0);
   }
 

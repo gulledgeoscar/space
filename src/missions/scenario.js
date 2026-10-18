@@ -76,7 +76,8 @@ export function placeOnAxis(world, range, lateral = new Vector3(), matchSpin = f
   const dockPoint = port.clone().addScaledVector(axis, range).add(latW);
   K.body.pos.copy(dockPoint).add(dockOff.applyQuaternion(K.body.quat));
   K.body.vel.copy(S.vel);
-  K.body.setAngularVelocity(matchSpin ? S.omega : new Vector3());
+  // spin about the shared axis only (see PilotController.referenceOmega)
+  K.body.setAngularVelocity(matchSpin ? axis.clone().multiplyScalar(S.omega.dot(axis)) : new Vector3());
   K.body.savePrev();
 }
 
