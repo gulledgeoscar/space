@@ -27,7 +27,7 @@ export const EARTH = planet({
   rotationRate: 7.2921159e-5,               // rad/s about +Y
   atmosphere: new Atmosphere({ rho0: 1.225, scaleHeight: 8500, top: 120000, soundSpeed: 320 }),
   dilation: ORBITS.earth.factor,
-  colors: { ocean: [0.02, 0.09, 0.22], land: [0.18, 0.22, 0.12], ice: [0.9, 0.93, 0.97], atmo: [0.35, 0.6, 1.0] },
+  colors: { ocean: [0.01, 0.04, 0.12], land: [0.12, 0.15, 0.07], ice: [0.9, 0.93, 0.97], atmo: [0.35, 0.6, 1.0] },
   kind: 'earth',
 });
 
