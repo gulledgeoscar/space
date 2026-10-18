@@ -98,7 +98,19 @@ export class HUD {
       <rect data-fd="ax" x="78" y="-60" width="6" height="0" fill="#6dff9c"/>
       <text data-fd="hint" x="0" y="86" fill="#7fd8ff" font-size="11" text-anchor="middle" font-family="Share Tech Mono"></text>
     </svg>`;
-    r.append(this.tl, this.tr, this.lm, this.bl, this.br, this.phase, this.assist, this.warnings, this.markers, this.fd);
+    // ---- minimal HUD (default): objective, one strip of key numbers, status ----
+    this.mObj = el('div', 'm-obj', '<div class="t"></div><div class="o"></div><div class="c"></div>');
+    this.mStrip = el('div', 'm-strip', '');
+    this.mCells = [];
+    for (let i = 0; i < 4; i++) {
+      const c = el('div', 'm-cell', '<div class="v">-</div><div class="k">-</div>');
+      this.mStrip.appendChild(c);
+      this.mCells.push({ el: c, v: c.querySelector('.v'), k: c.querySelector('.k') });
+    }
+    this.mFuel = el('div', 'm-fuel', '<div class="bar"><i></i></div><div class="lbl"></div>');
+    this.mStatus = el('div', 'm-status', '');
+    this.mHint = el('div', 'm-hint', 'I instruments · Tab controls');
+    r.append(this.tl, this.tr, this.lm, this.bl, this.br, this.phase, this.assist, this.warnings, this.markers, this.fd, this.mObj, this.mStrip, this.mFuel, this.mStatus, this.mHint);
     this.k = {};
     for (const n of r.querySelectorAll('[data-k]')) this.k[n.dataset.k] = n;
     this.bars = {};
@@ -131,6 +143,81 @@ export class HUD {
   setObjective(title, text) {
     this.missionTitle.textContent = title || '';
     this.objective.textContent = text || '';
+    this.mObj.querySelector('.t').textContent = title || '';
+    this.mObj.querySelector('.o').textContent = text || '';
+  }
+
+  // minimal strip cells: [value, label, cls]
+  cells(list) {
+    this.mCells.forEach((c, i) => {
+      const d = list[i];
+      c.el.style.display = d ? '' : 'none';
+      if (!d) return;
+      if (c.v._t !== d[0]) { c.v.textContent = d[0]; c.v._t = d[0]; }
+      if (c.k._t !== d[1]) { c.k.textContent = d[1]; c.k._t = d[1]; }
+      const cls = 'v' + (d[2] ? ' ' + d[2] : '');
+      if (c.v.className !== cls) c.v.className = cls;
+    });
+  }
+
+  updateMinimal(D, diff) {
+    const g = this.game, W = g.world, K = W.kestrel, b = K.body, pl = W.primary;
+    const alt = b.pos.length() - pl.radius;
+    const el2 = stateToElements(b.pos, b.vel, pl.gm);
+    const r = D.rel;
+    const docking = W.meridianActive && (r.range < 2500 || D.state !== 'free');
+    let status = '', stCls = '';
+    if (docking && D.state === 'free') {
+      const tol = diff;
+      const vmax = Math.max(tol.closing * 0.8, Math.min(2.0, r.range * 0.02));
+      const near = r.range < 30;
+      const spinning = Math.abs(rpm(r.spin)) > 0.3;
+      const list = [
+        [fmtDist(r.range), 'RANGE'],
+        [`${fmt(r.closing, r.range < 30 ? 2 : 1)} m/s`, 'CLOSING', r.range < 12 ? (r.closing > tol.closing ? 'bad' : r.closing > 0 ? 'good' : 'warn') : (r.closing > vmax * 1.5 ? 'bad' : r.closing < -0.02 ? 'warn' : null)],
+        [near ? `${fmt(r.lateral, 2)} m` : `${fmt(r.corridorAngle, 0)}°`, near ? 'OFF CENTRE' : 'OFF AXIS', near ? (r.lateral > tol.lateral ? 'bad' : 'good') : (r.pos.z < 0 ? 'bad' : r.corridorAngle > 10 ? 'warn' : 'good')],
+        spinning ? [`${fmt(r.spinMatch * 100, 0)}%`, 'SPIN MATCH', r.spinMatch > 0.97 ? 'good' : r.range < 60 ? 'bad' : null] : [`${fmt(r.tilt, 1)}°`, 'ALIGNMENT', r.tilt < tol.tilt ? 'good' : r.range < 30 ? 'bad' : null],
+      ];
+      this.cells(list);
+      if (r.range < 15 && r.pos.z > -0.5) {
+        const bad = [];
+        if (r.closing > tol.closing) bad.push('SLOW DOWN');
+        else if (r.closing < 0.005) bad.push('CLOSE IN (W)');
+        if (r.lateral > tol.lateral) bad.push('CENTRE UP');
+        if (r.tilt > tol.tilt) bad.push('ALIGN');
+        if (Math.abs(r.rollRate) > tol.rollRate) bad.push('MATCH SPIN');
+        status = bad.length ? bad.join(' · ') : 'READY FOR CAPTURE'; stCls = bad.length ? 'warn' : 'good';
+      } else if (r.range > 300 && W.docking.prediction && W.docking.prediction.closest > 200 && r.closing < 0.5) {
+        status = `CLOSEST APPROACH ${fmtDist(W.docking.prediction.closest)}`;
+      }
+    } else if (docking) {
+      this.cells([[D.phase(), 'STATUS', 'good'], D.state === 'hard' ? [`${fmt(D.pressure * 100, 0)}%`, 'PRESSURE'] : [`${D.latched} / 12`, 'LATCHES']]);
+    } else if (alt < 120000 || K.rho > 1e-7) {
+      const surfV = _v.subVectors(b.vel, W.surfaceVelocity(b.pos, _w));
+      const vs = b.vel.dot(_w.copy(b.pos).normalize());
+      const list = [[fmtDist(alt), 'ALTITUDE'], [`${fmt(surfV.length(), 0)} m/s`, 'SPEED'], [`${vs >= 0 ? '+' : ''}${fmt(vs, 0)} m/s`, 'VERTICAL', vs < -15 && alt < 3000 ? 'bad' : null]];
+      if (el2.e < 1 && el2.ra - pl.radius > 2000) list.push([fmtDist(el2.ra - pl.radius), 'APOAPSIS']);
+      this.cells(list);
+      if (K.q > 22000) { status = `DYNAMIC PRESSURE ${fmt(K.q / 1000, 0)} kPa`; stCls = K.q > 32000 ? 'bad' : 'warn'; }
+    } else {
+      const list = [[el2.e < 1 ? fmtDist(el2.ra - pl.radius) : 'ESCAPE', 'APOAPSIS'], [fmtDist(el2.rp - pl.radius), 'PERIAPSIS', el2.rp < pl.radius ? 'bad' : null], [`${fmt(b.vel.length(), 0)} m/s`, 'ORBITAL SPEED']];
+      if (W.meridianActive) list.push([fmtDist(r.range), 'MERIDIAN']);
+      this.cells(list);
+    }
+    // fuel: one bar + delta-v
+    const f = K.fuel / K.capacity;
+    const bar = this.mFuel.querySelector('i');
+    bar.style.width = (Math.max(0, Math.min(1, f)) * 100).toFixed(1) + '%';
+    bar.className = f < 0.05 ? 'bad' : f < 0.15 ? 'warn' : '';
+    const thr = K.booster ? K.booster.level : K.cmd.throttle;
+    const lbl = `FUEL ${fmt(f * 100, 0)}% · Δv ${fmt(K.booster ? K.deltaVMain() : K.deltaVMain(), 0)} m/s` + (thr > 0.005 ? ` · THROTTLE ${fmt(thr * 100, 0)}%` : '');
+    const ln = this.mFuel.querySelector('.lbl');
+    if (ln._t !== lbl) { ln.textContent = lbl; ln._t = lbl; }
+    if (this.mStatus._t !== status + stCls) { this.mStatus.textContent = status; this.mStatus.className = 'm-status ' + stCls; this.mStatus._t = status + stCls; }
+    // time dilation line only where it matters
+    const c = this.mObj.querySelector('.c');
+    const ct = W.clock.factor > 2 || W.clock.earth > W.clock.ship + 3600 ? `EARTH +${formatDuration(W.clock.earth)}${g.warp > 1 ? ` · WARP ${g.warp}×` : ''}` : (g.warp > 1 ? `WARP ${g.warp}×` : '');
+    if (c._t !== ct) { c.textContent = ct; c._t = ct; }
   }
 
   update(dt) {
@@ -142,6 +229,10 @@ export class HUD {
     this.updateMarkers();
     if (this.timer > 0) return;
     this.timer = 1 / 12;
+    const detail = !!settings.get('hudDetail');
+    for (const n of [this.tl, this.tr, this.lm, this.bl]) n.classList.toggle('hidden', !detail);
+    for (const n of [this.mObj, this.mStrip, this.mFuel, this.mStatus, this.mHint]) n.classList.toggle('hidden', detail);
+    if (!detail) this.updateMinimal(D, diff);
     // clocks
     this.set('ship', formatDuration(W.clock.ship));
     this.set('earth', '+' + formatDuration(W.clock.earth));
@@ -185,12 +276,12 @@ export class HUD {
     this.set('mass', `${fmt(b.mass / 1000, 2)} t / ${fmt(b.comBody.z, 2)}`);
     // docking
     const showDock = W.meridianActive && (D.rel.range < 8000 || D.state !== 'free');
-    this.br.classList.toggle('hidden', !showDock);
+    this.br.classList.toggle('hidden', !showDock || !detail);
     if (showDock) this.updateDocking(D, diff, expert);
     // phase banner
     const ph = this.phaseText || (showDock ? D.phase() : '');
     this.phase.querySelector('.name').textContent = ph;
-    this.phase.querySelector('.sub').textContent = this.phaseSub || (showDock && D.state === 'free' ? `range ${fmtDist(D.rel.range)} · closing ${fmt(D.rel.closing, 2)} m/s` : '');
+    this.phase.querySelector('.sub').textContent = this.phaseSub || (detail && showDock && D.state === 'free' ? `range ${fmtDist(D.rel.range)} · closing ${fmt(D.rel.closing, 2)} m/s` : '');
     // assist line
     const p = g.pilot;
     const a = [];
@@ -198,7 +289,7 @@ export class HUD {
     if (p.killVel) a.push('KILL REL VEL');
     if (p.attMode) a.push('HOLD ' + p.attMode.toUpperCase());
     if (!diff.helpers) a.length = 0;
-    a.push(p.camMode === 'dock' ? 'DOCK CAM' : p.camMode.toUpperCase());
+    if (detail) a.push(p.camMode === 'dock' ? 'DOCK CAM' : p.camMode.toUpperCase());
     this.assist.textContent = a.join('  ·  ');
     this.updateWarnings();
     this.updateFD(diff);
@@ -271,7 +362,7 @@ export class HUD {
   // and the closing-speed target (bar) for the docking corridor.
   updateFD(diff) {
     const g = this.game, W = g.world, D = W.docking;
-    const on = diff.guidance && W.meridianActive && D.state === 'free' && D.rel.range < 300 && g.mode === 'flight';
+    const on = diff.guidance && W.meridianActive && D.state === 'free' && D.rel.range < 150 && g.mode === 'flight';
     this.fd.classList.toggle('hidden', !on);
     if (!on) return;
     const r = D.rel;
@@ -331,8 +422,8 @@ export class HUD {
       if (v.length() > 0.005) {
         const dir = v.clone().normalize();
         const tag = near ? ` ${v.length().toFixed(2)}` : '';
-        put('pro', camPos.clone().addScaledVector(dir, 1000), 'prograde', 'green', (near ? 'REL' : 'PRO') + tag);
-        put('retro', camPos.clone().addScaledVector(dir, -1000), 'retrograde', 'amber', near ? 'REL-' : 'RETRO');
+        put('pro', camPos.clone().addScaledVector(dir, 1000), 'prograde', 'green', near ? `DRIFT${tag}` : 'PROGRADE');
+        if (settings.get('hudDetail')) put('retro', camPos.clone().addScaledVector(dir, -1000), 'retrograde', 'amber', near ? 'DRIFT−' : 'RETRO');
       }
       if (W.meridianActive && D.state === 'free') {
         const pw = D.rel.portWorld.clone().sub(g.pipeline.origin);
