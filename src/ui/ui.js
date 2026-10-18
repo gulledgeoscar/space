@@ -10,6 +10,7 @@ import { Menus } from './menus.js';
 import { DebugOverlay } from './debugOverlay.js';
 import { MapView } from './mapView.js';
 import { settings } from '../core/settings.js';
+import { formatDuration } from '../physics/timeDilation.js';
 
 const div = (cls, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; return e; };
 
@@ -31,8 +32,9 @@ export class UI {
     this.coriolis = div('coriolis');
     this.crosshair = div('crosshair hidden');
     this.fpsEl = div('fps');
+    this.miniClock = div('miniclock hidden');
     this.fade = div('fadeblack');
-    root.append(this.banner, this.toastBox, this.promptEl, this.objectivesEl, this.caption, this.coriolis, this.crosshair, this.fpsEl);
+    root.append(this.banner, this.toastBox, this.promptEl, this.objectivesEl, this.caption, this.coriolis, this.crosshair, this.fpsEl, this.miniClock);
     this.extra = div('');
     root.appendChild(this.extra);
     root.appendChild(this.fade);
@@ -58,6 +60,19 @@ export class UI {
     this.debug.update(dt);
     if (this.bannerTimer > 0) { this.bannerTimer -= dt; if (this.bannerTimer <= 0) this.banner.classList.remove('show'); }
     this.crosshair.classList.toggle('hidden', !(g.mode === 'interior' || g.mode === 'surface') || g.cutscene || this.menus.open);
+    // compact mission clock + objective while on foot (time keeps dilating)
+    const onFoot = (g.mode === 'interior' || g.mode === 'surface') && !g.cutscene && !this.menus.open;
+    this.miniClock.classList.toggle('hidden', !onFoot);
+    if (onFoot) {
+      this._mc = (this._mc || 0) - dt;
+      if (this._mc <= 0) {
+        this._mc = 0.2;
+        const W = g.world;
+        const f = W.clock.factor;
+        const cur = this.objectives.items.find((i) => !i.done);
+        this.miniClock.innerHTML = `<div class="o">${cur ? cur.text : ''}</div><div>SHIP ${formatDuration(W.clock.ship)}</div><div class="e">EARTH +${formatDuration(W.clock.earth)}</div>${f > 10 ? `<div class="f">dt/dτ ${f.toFixed(0)} · 1 s here = ${formatDuration(f)} there</div>` : ''}`;
+      }
+    }
     this.fpsEl.textContent = settings.get('showFps') ? `${g.fps.toFixed(0)} fps · ${g.loop.stepsLastFrame} steps` : '';
   }
 

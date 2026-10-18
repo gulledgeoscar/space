@@ -86,7 +86,7 @@ export class DockingDirector {
       }
     }
     // alarm conditions
-    const klaxon = D.state === 'free' && r.range < 15 && r.pos.z > 0 && (r.closing > tol.closing * 2.5 || (r.range < 4 && r.lateral > 0.6));
+    const klaxon = (this.alarmUntil && performance.now() < this.alarmUntil) || D.state === 'free' && r.range < 15 && r.pos.z > 0 && (r.closing > tol.closing * 2.5 || (r.range < 4 && r.lateral > 0.6));
     this.g.alarm = klaxon || this.g.alarm;
   }
 
@@ -139,6 +139,7 @@ export class DockingDirector {
     else if (r.latVel > settings.difficulty.lateralVel) why = `sliding sideways at ${f2(r.latVel)}`;
     if (e.zone !== 'port') why = 'you hit the hub face, not the port';
     if (e.speed > 0.3) {
+      this.alarmUntil = performance.now() + 3500;
       this.m.say('case', `Impact at ${f2(e.speed)} metres per second. ${why ? 'Cause: ' + why + '.' : ''} We bounced, and we are tumbling.`, { priority: true, key: 'bounce', cooldown: 3 });
       g.fx.damage = Math.min(1, e.speed);
       g.ui.showBanner('IMPACT', 'red', 1.5, `${f2(e.speed)} m/s`);

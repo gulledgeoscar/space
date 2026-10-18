@@ -2,7 +2,9 @@
 // active mission; runs the frame loop (fixed-step physics + interpolated
 // rendering around a floating origin).
 
+import { materials } from '../world/materials.js';
 import {
+  BoxGeometry, IcosahedronGeometry,
   Vector3, Quaternion, Color, DirectionalLight, HemisphereLight, AmbientLight, PMREMGenerator,
   Line, BufferGeometry, Float32BufferAttribute, LineBasicMaterial, Mesh, SphereGeometry,
   MeshBasicMaterial, AdditiveBlending, Group, ConeGeometry, LineDashedMaterial,
@@ -297,6 +299,9 @@ export class Game {
     if (this.wrenModel) this.wrenModel.root.visible = false;
     for (const e of this.extraMeshes || []) e.parent?.remove(e);
     this.extraMeshes = [];
+    // put torn-off ring modules back on the (new) Meridian
+    const mm = this.meridianModel;
+    for (const m of mm.modules) { if (m.parent !== mm.root) { m.removeFromParent(); mm.root.add(m); } m.position.set(0, 0, 0); m.quaternion.identity(); }
   }
 
   startMission(id, stage = null, restore = null, opts = {}) {
@@ -419,7 +424,13 @@ export class Game {
     this.emit('mode', 'interior');
   }
 
-  enterFlight(cam = 'cockpit') {
+  enterFlight(cam = 'cockpit', { blend = true } = {}) {
+    // blend from wherever the camera is now (walking/floating) into the cockpit
+    const camNow = this.pipeline.camera;
+    const kAbs = this.interpBodyPos(this.world.kestrel.body, new Vector3());
+    const fromOff = camNow.position.clone().add(this.pipeline.origin).sub(kAbs);
+    const fromQuat = camNow.quaternion.clone();
+    const canBlend = blend && this.mode !== 'flight' && this.mode !== 'title' && fromOff.length() < 60;
     this.mode = 'flight';
     this.controller = this.pilot;
     if (this.interiorPlayer.interior) this.interiorPlayer.interior.group.visible = false;
@@ -429,8 +440,18 @@ export class Game {
     this.ui.setCoriolis('');
     this.ui.prompt(null);
     this.pilot.camMode = cam;
-    this.pilot.transition = null;
+    this.pilot.transition = canBlend ? { fromOff, fromQuat, fromFov: camNow.fov, t: 0, dur: 1.3 } : null;
     this.emit('mode', 'flight');
+  }
+
+  // On foot on a planet surface (player controller supplied by the mission).
+  enterSurface(player) {
+    this.mode = 'surface';
+    this.controller = player;
+    this.mapOpen = false;
+    this.scene.environmentIntensity = 0.25;
+    this.ui.prompt(null);
+    this.emit('mode', 'surface');
   }
 
   setShellShadows(on) {
@@ -487,6 +508,20 @@ export class Game {
     this.loop.advance(dt, 1, (h) => { W.meridian.body.savePrev(); W.meridian.body.integrate(h); });
     this.renderAlpha = this.loop.alpha;
     this.simDt = dt;
+  }
+
+  // a jagged piece of hull for debris clouds
+  makeDebrisMesh(size) {
+    if (!this._debrisGeo) {
+      this._debrisGeo = [new BoxGeometry(1, 0.15, 0.7), new BoxGeometry(0.4, 0.4, 1.2), new IcosahedronGeometry(0.5, 0), new BoxGeometry(1.4, 0.05, 1.0)];
+    }
+    const M = materials();
+    const mats = [M.hull, M.hullDark, M.foil, M.darkMetal, M.radiator];
+    const mesh = new Mesh(this._debrisGeo[Math.floor(Math.random() * this._debrisGeo.length)], mats[Math.floor(Math.random() * mats.length)]);
+    mesh.scale.set(size * (0.6 + Math.random()), size * (0.6 + Math.random()), size * (0.6 + Math.random()));
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+    return mesh;
   }
 
   shadowFocus() {

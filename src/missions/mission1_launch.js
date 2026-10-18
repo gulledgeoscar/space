@@ -48,7 +48,7 @@ export class LaunchMission extends Mission {
     this.on('player:area', (a) => { if (a === 'hub' && this.phaseName === 'docked') this.enteredMeridian(); });
     this.on('kestrel:boosterBurnout', () => this.onBurnout());
     const stage = this.stage || 'launch';
-    if (stage === 'rendezvous') this.setupRendezvous();
+    if (stage === 'rendezvous' || stage === 'final') this.setupRendezvous(stage === 'final');
     else if (stage === 'orbit') this.setupOrbit();
     else this.setupPad();
   }
@@ -214,7 +214,7 @@ export class LaunchMission extends Mission {
     this.enterOrbitPhase();
   }
 
-  setupRendezvous() {
+  setupRendezvous(final = false) {
     const g = this.game, W = this.world, K = W.kestrel;
     this.reachStage('rendezvous');
     this.setupMeridian(0.9);
@@ -226,14 +226,14 @@ export class LaunchMission extends Mission {
     g.pilot.setCamera('chase');
     ['startup', 'ascent', 'orbit', 'rendezvous'].forEach((i) => this.complete(i));
     this.phaseName = 'prox';
-    this.beginProximity();
+    this.beginProximity(final);
   }
 
   enterOrbitPhase() {
     const self = this;
     this.guide.muted = false;
     this.complete('orbit');
-    this.saveCheckpoint('Parking orbit');
+    this.saveCheckpoint('Parking orbit', { snapshot: false });
     this.checkpointStage = 'orbit';
     this.reachStage('orbit');
     this.run((function* () {
@@ -243,11 +243,12 @@ export class LaunchMission extends Mission {
     })());
   }
 
-  beginProximity() {
+  beginProximity(final = false) {
     const self = this, g = this.game;
     this.guide.muted = false;
     this.director.active = true;
     this.complete('rendezvous');
+    if (final) { this.complete('lesson'); this.guide.clear(); this.checkpointStage = 'final'; return; }
     this.saveCheckpoint('Rendezvous · 2 km');
     this.checkpointStage = 'rendezvous';
     this.reachStage('rendezvous');
@@ -273,6 +274,7 @@ export class LaunchMission extends Mission {
       else yield* self.line('case', 'Realistic: no auto-stabilisation. Use the docking camera — C — and keep the cross in the circle.');
       self.guide.clear();
       self.saveCheckpoint('Final approach · 300 m');
+      self.checkpointStage = 'final';
     })());
   }
 

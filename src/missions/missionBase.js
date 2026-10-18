@@ -72,14 +72,18 @@ export class Mission {
   complete(id) { this.ui.completeObjective(id); }
 
   // ---- checkpoints ---------------------------------------------------------------
-  saveCheckpoint(name, extra = {}) {
+  // snapshot: restore the exact physics state on retry (safe when no
+  // surface site is involved); otherwise the stage is rebuilt from scratch.
+  saveCheckpoint(name, { snapshot = true, extra = {} } = {}) {
     this.checkpointName = name;
-    this.checkpointData = { world: this.world.snapshot(), extra: JSON.parse(JSON.stringify(extra)), stage: this.stageAt };
+    this.checkpointData = snapshot ? { world: this.world.snapshot(), extra: JSON.parse(JSON.stringify(extra)), name } : null;
     this.ui.toast(`CHECKPOINT · ${name}`);
   }
-  canRetry() { return !!this.checkpointData || !!this.retryStage; }
+  canRetry() { return true; }
   retry() {
+    const name = this.checkpointName;
     this.game.restartMission(this.id, this.checkpointStage || this.stage, this.checkpointData);
+    if (this.game.mission) this.game.mission.checkpointName = name;
   }
   reachStage(id) { this.stageAt = id; this.checkpointStage = id; progress.reachStage(this.id, id); }
 

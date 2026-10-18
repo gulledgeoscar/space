@@ -224,13 +224,17 @@ export class HUD {
       this.set('lx', fmtDist(r.lateral));
       this.set('ly', fmt(r.corridorAngle, 1) + '°', r.pos.z < 0 ? 'bad' : r.corridorAngle > 10 ? 'warn' : 'good');
     }
-    this.set('lv', fmt(r.latVel, 3) + ' m/s', r.latVel > tol.lateralVel ? 'bad' : null);
+    // lateral velocity vs the port centre far out; vs the actual port surface
+    // (including its spin velocity w x r) once contact is possible
+    const lv = near ? r.latVel : Math.hypot(r.vel.x, r.vel.y);
+    this.label('lv', near ? 'Lateral vel (surface)' : 'Lateral vel');
+    this.set('lv', fmt(lv, 3) + ' m/s', near && r.latVel > tol.lateralVel ? 'bad' : null);
     this.set('pit', fmt(r.pitch, 2) + '°', Math.abs(r.pitch) > tol.tilt ? 'bad' : 'good');
     this.set('yaw', fmt(r.yaw, 2) + '°', Math.abs(r.yaw) > tol.tilt ? 'bad' : 'good');
     this.set('rol', fmt(r.roll, 1) + '°', Math.abs(r.roll) > tol.roll ? 'bad' : 'good');
     this.set('spin', `${fmt(rpm(r.spin), 2)} RPM`);
     this.set('rr', fmt(r.rollRate, 4) + ' rad/s', Math.abs(r.rollRate) > tol.rollRate ? 'bad' : 'good');
-    this.set('tan', fmt(r.tangential, 3) + ' m/s', r.tangential > tol.lateralVel ? 'bad' : null);
+    this.set('tan', r.range < 60 ? fmt(r.tangential, 3) + ' m/s' : `${fmt(r.axisOffset, 1)} m off axis`, r.range < 60 && r.tangential > tol.lateralVel ? 'bad' : null);
     this.set('dl', `${fmt(r.dLmag / 1000, 1)} kN·m·s`, r.dLmag > 8000 ? 'warn' : null);
     const pr = D.prediction;
     this.set('ca', pr && D.state === 'free' ? `${fmtDist(pr.closest)} @ ${formatDuration(pr.tClosest)}` : '---');
