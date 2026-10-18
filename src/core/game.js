@@ -25,6 +25,7 @@ import { buildMeridianModel } from '../ship/meridianModel.js';
 import { buildDockingPortModel } from '../ship/dockingPort.js';
 import { KESTREL } from '../ship/kestrel.js';
 import { PilotController } from '../player/piloting.js';
+import { InteriorPlayer } from '../player/interiorPlayer.js';
 import { UI } from '../ui/ui.js';
 import { AudioEngine } from '../audio/audio.js';
 import { MISSION_CLASSES } from '../missions/index.js';
@@ -67,6 +68,8 @@ export class Game {
     this.setupModels();
     this.pilot = new PilotController(this);
     this.controller = this.pilot;
+    this.interiorPlayer = new InteriorPlayer(this);
+    this.hatchOpen = false;
     this.setupTrajectory();
     this.audio = new AudioEngine();
     this.ui = new UI(this, uiRoot);
@@ -200,7 +203,6 @@ export class Game {
         this.controller?.fixedUpdate?.(h, input);
         this.mission?.fixedUpdate?.(h);
         this.world.step(h);
-        this.interior?.fixedUpdate?.(h);
       });
       this.renderAlpha = this.loop.alpha;
       this.simDt = steps * PHYSICS_DT;
@@ -400,6 +402,50 @@ export class Game {
     this.interior?.visuals?.(dt, origin);
   }
 
+  // ---- modes ---------------------------------------------------------------------
+  enterInterior(spawn = 'bridge', opts = {}) {
+    const ip = this.interiorPlayer;
+    const fromCamera = opts.blend ? this.cameraInStation() : null;
+    ip.spawn(spawn, { ...opts, fromCamera });
+    this.mode = 'interior';
+    this.controller = ip;
+    this.mapOpen = false;
+    ip.interior.group.visible = true;
+    this.meridianModel.hub.visible = false;
+    this.setShellShadows(false);
+    this.scene.environmentIntensity = 0.1;
+    this.emit('mode', 'interior');
+  }
+
+  enterFlight(cam = 'cockpit') {
+    this.mode = 'flight';
+    this.controller = this.pilot;
+    if (this.interiorPlayer.interior) this.interiorPlayer.interior.group.visible = false;
+    this.meridianModel.hub.visible = true;
+    this.setShellShadows(true);
+    this.scene.environmentIntensity = 0.12;
+    this.ui.setCoriolis('');
+    this.ui.prompt(null);
+    this.pilot.camMode = cam;
+    this.pilot.transition = null;
+    this.emit('mode', 'flight');
+  }
+
+  setShellShadows(on) {
+    this.meridianModel.root.traverse((o) => { if (o.userData.exteriorShell) o.castShadow = on; });
+  }
+
+  // current camera pose expressed in the station body frame (for blends)
+  cameraInStation() {
+    const root = this.meridianModel.root;
+    root.updateMatrixWorld();
+    const cam = this.pipeline.camera;
+    const inv = root.matrixWorld.clone().invert();
+    const pos = cam.position.clone().applyMatrix4(inv);
+    const quat = root.quaternion.clone().invert().multiply(cam.quaternion);
+    return { pos, quat };
+  }
+
   // Title screen: the Meridian turning slowly in front of Lethe.
   titleSetup() {
     const W = this.world;
@@ -501,7 +547,7 @@ export class Game {
     km.cockpit.group.visible = inCockpit;
     km.hull.visible = !(this.mode === 'flight' && this.pilot.camMode === 'cockpit');
     km.canopy.visible = km.hull.visible;
-    km.canopyWindows.visible = km.hull.visible;
+    km.canopyWindows.visible = km.hull.visible && this.mode !== 'interior';
     km.cockpit.cabinLight.intensity = inCockpit ? 0.6 : 0;
   }
 
@@ -529,7 +575,11 @@ export class Game {
     // standoff target folds down after capture
     const fold = D.state === 'free' ? 0 : -Math.PI / 2;
     pm.post.rotation.x += (fold - pm.post.rotation.x) * Math.min(1, dt * 3);
-    for (const f of pm.floods) f.intensity = near ? 180 : 0;
+    for (const f of pm.floods) f.intensity = near && this.mode !== 'interior' ? 180 : 0;
+    const open = D.state === 'hard' && D.pressure >= 1 && this.hatchOpen;
+    pm.hatch.visible = !open;
+    this.kestrelModel.noseHatch.visible = !open;
+    pm.target.visible = D.state === 'free' || D.state === 'soft';
     mm.beacons.forEach((b) => { b.visible = (t % 2.0) < 0.12; });
     this.corridor.visible = near && D.state === 'free' && settings.difficulty.trajectory && !this.mapOpen && r.range > 4;
   }

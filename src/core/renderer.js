@@ -72,7 +72,7 @@ export class RenderPipeline {
     this.composer.renderTarget1.texture.type = HalfFloatType;
     this.layered = new LayeredRenderPass(this);
     this.composer.addPass(this.layered);
-    this.bloom = new UnrealBloomPass(new Vector2(512, 512), 0.55, 0.5, 0.92);
+    this.bloom = new UnrealBloomPass(new Vector2(512, 512), 0.5, 0.45, 1.15);
     this.composer.addPass(this.bloom);
     this.post = new ShaderPass(PostFXShader);
     this.composer.addPass(this.post);

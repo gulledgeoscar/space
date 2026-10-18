@@ -31,7 +31,7 @@ export const MODULE_WINDOWS = {
 };
 
 // Curved box between radii [rIn, rOut], |z| <= zh, angles [a0, a1].
-export function arcBox(rIn, rOut, zh, a0, a1, segs = 12) {
+export function arcBox(rIn, rOut, zh, a0, a1, segs = 12, caps = true) {
   const pos = [], nor = [], uv = [];
   const push = (p, n, u, v) => { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); uv.push(u, v); };
   const P = (r, a, z) => [r * Math.cos(a), r * Math.sin(a), z];
@@ -56,13 +56,28 @@ export function arcBox(rIn, rOut, zh, a0, a1, segs = 12) {
   }
   // end caps
   const e0 = [Math.sin(a0), -Math.cos(a0), 0], e1 = [-Math.sin(a1), Math.cos(a1), 0];
-  quad(P(rIn, a0, -zh), P(rOut, a0, -zh), P(rOut, a0, zh), P(rIn, a0, zh), e0, e0, e0, e0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]);
-  quad(P(rIn, a1, zh), P(rOut, a1, zh), P(rOut, a1, -zh), P(rIn, a1, -zh), e1, e1, e1, e1, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]);
+  if (caps) quad(P(rIn, a0, -zh), P(rOut, a0, -zh), P(rOut, a0, zh), P(rIn, a0, zh), e0, e0, e0, e0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]);
+  if (caps) quad(P(rIn, a1, zh), P(rOut, a1, zh), P(rOut, a1, -zh), P(rIn, a1, -zh), e1, e1, e1, e1, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]);
   const g = new BufferGeometry();
   g.setAttribute('position', new Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new Float32BufferAttribute(nor, 3));
   g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
   return g;
+}
+
+// A structural band hugging the OUTSIDE of a module shell at angle a (so
+// it never intrudes into the walkable interior).
+export function shellBand(a, halfAngle, t = 0.1) {
+  const parts = [
+    arcBox(SHELL_OUT, SHELL_OUT + t, SHELL_Z + t, a - halfAngle, a + halfAngle, 1),
+    arcBox(SHELL_IN - t, SHELL_IN, SHELL_Z + t, a - halfAngle, a + halfAngle, 1),
+  ];
+  for (const sz of [-1, 1]) {
+    const g = arcBox(SHELL_IN - t, SHELL_OUT + t, t / 2, a - halfAngle, a + halfAngle, 1);
+    g.translate(0, 0, sz * (SHELL_Z + t / 2));
+    parts.push(g);
+  }
+  return parts;
 }
 
 // A curved window pane facing out of a module side (side = +1/-1 z) or the
@@ -102,20 +117,22 @@ export function buildMeridianModel() {
 
   // ---- ring modules ---------------------------------------------------------
   const modules = [];
-  const gap = 0.9 / RING_FLOOR_R;
+  const gap = 0.04 / RING_FLOOR_R;
   for (let i = 0; i < RING_MODULES; i++) {
     const a0 = (i / RING_MODULES) * Math.PI * 2, a1 = ((i + 1) / RING_MODULES) * Math.PI * 2;
     const group = new Group();
     group.name = `module${i}`;
     const b = new GeoBatch();
-    const shell = new Mesh(arcBox(SHELL_IN, SHELL_OUT, SHELL_Z, a0 + gap, a1 - gap, 16), i % 3 === 1 ? M.hullDark : M.hull);
+    // no end caps: neighbouring modules butt together and the walkable
+    // rooms run straight through the joints
+    const shell = new Mesh(arcBox(SHELL_IN, SHELL_OUT, SHELL_Z, a0 + gap, a1 - gap, 16, false), i % 3 === 1 ? M.hullDark : M.hull);
     shell.castShadow = true; shell.receiveShadow = true;
     shell.userData.exteriorShell = true;
     group.add(shell);
     // ribs
     for (let k = 1; k < 4; k++) {
       const a = a0 + gap + ((a1 - a0 - 2 * gap) * k) / 4;
-      b.add(arcBox(SHELL_IN - 0.08, SHELL_OUT + 0.12, SHELL_Z + 0.1, a - 0.006, a + 0.006, 1), M.hullDark);
+      for (const g of shellBand(a, 0.006, 0.08)) b.add(g, M.hullDark);
     }
     // windows
     for (const w of MODULE_WINDOWS[i] || []) b.add(windowPane(w, a0), i === 4 ? winMatCool : winMat);
@@ -160,8 +177,7 @@ export function buildMeridianModel() {
   for (let i = 0; i < RING_MODULES; i++) {
     const a = (i / RING_MODULES) * Math.PI * 2;
     const p = new Vector3(Math.cos(a) * MODULE_MID_R, Math.sin(a) * MODULE_MID_R, 0);
-    cb.add(new CylinderGeometry(1.6, 1.6, gap * RING_FLOOR_R * 2.2, 20), M.darkMetal, p, { x: 0, y: 0, z: a });
-    cb.add(new TorusGeometry(1.7, 0.12, 8, 24), M.metal, p, { x: Math.PI / 2, y: 0, z: a, order: 'ZYX' });
+    for (const g of shellBand(a, 0.35 / RING_FLOOR_R, 0.16)) cb.add(g, M.darkMetal);
   }
   const connectors = cb.build();
   connectors.name = 'connectors';

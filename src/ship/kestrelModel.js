@@ -156,8 +156,11 @@ export function buildKestrelModel({ livery = 'kestrel' } = {}) {
     g.translate(0, 0, KESTREL.dockZ + 0.06);
     cb.add(g, M.hullDark);
   }
-  // hatch and docking camera
-  cb.cyl(0.46, 0.46, 0.05, M.panelDark, new Vector3(0, 0, -6.98), { x: Math.PI / 2, y: 0, z: 0 }, 32);
+  // docking camera (the nose hatch is a separate mesh so it can open)
+  const noseHatch = new Mesh(new CylinderGeometry(0.46, 0.46, 0.05, 32), M.panelDark);
+  noseHatch.rotation.x = Math.PI / 2;
+  noseHatch.position.z = -6.98;
+  collar.add(noseHatch);
   cb.box(0.12, 0.12, 0.16, M.darkMetal, new Vector3(0, 0.28, -7.02));
   cb.add(new SphereGeometry(0.04, 10, 8), M.glass, new Vector3(0, 0.28, -7.1));
   collar.add(cb.build());
@@ -226,7 +229,7 @@ export function buildKestrelModel({ livery = 'kestrel' } = {}) {
 
   return {
     root, exterior, hull, canopy, canopyWindows, hullMat, collar, gear, legs, plumes, plumeMat, strobe, strobeMat,
-    cockpit, nozzles,
+    cockpit, nozzles, noseHatch,
   };
 }
 

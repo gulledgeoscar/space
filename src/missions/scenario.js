@@ -79,3 +79,22 @@ export function placeOnAxis(world, range, lateral = new Vector3(), matchSpin = f
   K.body.setAngularVelocity(matchSpin ? S.omega : new Vector3());
   K.body.savePrev();
 }
+
+// Standard start: Meridian on a circular orbit around `planet`, spinning at
+// 1 g, Kestrel hard-docked in the hub port.
+export function setupDocked(game, planet, altitude = 400e3, { system = null, theta = 0.3, bh = null, fuel = null } = {}) {
+  const W = game.world;
+  W.setPrimary(planet);
+  game.planetView.setPlanet(planet);
+  game.sky.setSystem(system || (planet.system === 'sol' ? 'sol' : 'lethe'));
+  if (bh) game.sky.setBlackHole(bh.dir, bh.dist ?? 40, bh.inc ?? 0.1);
+  const st = circularState(planet, altitude, theta);
+  W.meridian.body.pos.copy(st.pos); W.meridian.body.vel.copy(st.vel);
+  const basis = lvlhBasis(st.pos, st.vel);
+  orientStation(W.meridian, basis.y.clone().negate());
+  if (fuel !== null) W.kestrel.fuel = fuel;
+  W.docking.attachImmediately(0);
+  W.meridian.body.savePrev(); W.kestrel.body.savePrev();
+  game.hatchOpen = true;
+  return basis;
+}

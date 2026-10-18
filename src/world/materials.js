@@ -85,7 +85,7 @@ export function materials() {
     darkMetal: new MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.8 }),
     rubber: new MeshStandardMaterial({ color: 0x18191b, roughness: 0.9, metalness: 0.0 }),
     nozzle: new MeshStandardMaterial({ color: 0x3a3330, roughness: 0.45, metalness: 0.85, side: DoubleSide }),
-    panel: new MeshStandardMaterial({ color: 0xffffff, map: interiorTex, roughness: 0.7, metalness: 0.1 }),
+    panel: new MeshStandardMaterial({ color: 0xaab0b5, map: interiorTex, roughness: 0.72, metalness: 0.12 }),
     panelDark: new MeshStandardMaterial({ color: 0x5a6068, map: interiorTex, roughness: 0.6, metalness: 0.2 }),
     floor: new MeshStandardMaterial({ color: 0xffffff, map: grating(), roughness: 0.8, metalness: 0.6 }),
     hazard: new MeshStandardMaterial({ color: 0xffffff, map: hazard(), roughness: 0.7, metalness: 0.1 }),

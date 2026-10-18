@@ -86,9 +86,11 @@ export function buildDockingPortModel() {
   b.add(new RingGeometry(0.55, 1.05, 48), M.darkMetal, new Vector3(0, 0, PORT_Z - 0.005));
   b.add(new TorusGeometry(PORT_RING_R, 0.075, 12, 48), M.darkMetal, new Vector3(0, 0, PORT_Z + 0.02));
   b.add(new TorusGeometry(1.06, 0.05, 8, 48), M.hazard, new Vector3(0, 0, PORT_Z));
-  // hatch
-  b.add(new CylinderGeometry(0.55, 0.55, 0.06, 40), M.panelDark, new Vector3(0, 0, PORT_Z - 0.04), { x: Math.PI / 2, y: 0, z: 0 });
-  b.add(new TorusGeometry(0.3, 0.025, 6, 24), M.metal, new Vector3(0, 0, PORT_Z));
+  // hatch (separate so it can swing open when docked)
+  const hatch = new Mesh(new CylinderGeometry(0.55, 0.55, 0.06, 40), M.panelDark);
+  hatch.rotation.x = Math.PI / 2;
+  hatch.position.z = PORT_Z - 0.04;
+  root.add(hatch);
   // guide petals (androgynous: offset 60 deg from the Kestrel's)
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 + Math.PI / 2 + Math.PI / 3;
@@ -176,7 +178,7 @@ export function buildDockingPortModel() {
     root.add(spot, spot.target);
     floods.push(spot);
   }
-  return { root, target, post, hooks, guide, lightMats, floods };
+  return { root, target, post, hooks, guide, lightMats, floods, hatch };
 }
 
 // ---------------------------------------------------------------------------

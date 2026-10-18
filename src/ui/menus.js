@@ -123,7 +123,7 @@ export class Menus {
       ['U', 'Release latches (undock)'], ['Space', 'Stage / confirm'], ['M', 'Map / orbit view'], [', / .', 'Time warp − / +'],
       ['K / L', 'Assisted: kill rotation / kill rel. velocity'], ['1 – 9', 'Assisted: prograde, retro, normal, anti, rad out/in, target, anti, port align'],
       ['ON FOOT', ''], ['WASD + mouse', 'Walk / look'], ['Shift', 'Run'], ['Space', 'Jump / push off'], ['E (hold)', 'Interact / grab handrail'],
-      ['R / F, WASD', 'Suit thrusters (zero-g)'], ['Q / E', 'Roll (zero-g)'], ['F', 'Flashlight'], ['V', 'First / third person'], ['B', 'Drop a bolt (watch Coriolis)'],
+      ['WASD, Space / Ctrl', 'Suit thrusters (zero-g); Space pushes off walls'], ['Q / E', 'Roll (zero-g)'], ['F', 'Flashlight'], ['V', 'First / third person'], ['B', 'Drop a bolt (watch Coriolis)'],
       ['GENERAL', ''], ['Tab', 'Objectives'], ['P', 'Physics debug overlay'], ['Esc', 'Pause'],
     ];
     const box = h(`<div class="box" style="width:min(700px,94vw)"><h2>CONTROLS</h2><div class="controls-grid">${rows.map(([a, b]) => (b ? `<b>${a}</b><span>${b}</span>` : `<b style="color:#fff;margin-top:8px">${a}</b><span></span>`)).join('')}</div><button data-a="back" style="margin-top:16px">BACK</button></div>`);
