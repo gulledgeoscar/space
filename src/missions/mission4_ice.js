@@ -24,7 +24,7 @@ import { moduleAngle, MODULE_MID_R } from '../ship/meridian.js';
 import { settings } from '../core/settings.js';
 import { fromRpm, rpm } from '../physics/constants.js';
 import { SKADI_BH } from './mission3_ocean.js';
-import { placeCrew } from './mission2_walk.js';
+import { placeCrew, BRIDGE_CREW_S } from './mission2_walk.js';
 
 export const ORBIT_ALT = 300e3;
 
@@ -50,6 +50,17 @@ export class IceMission extends Mission {
   }
 
   allowExit() { return false; }
+  allowBoard() { return this.phase === 'walk'; }
+  // on the surface: where the marker points
+  surfaceTarget() {
+    if (this.phase !== 'surface') return null;
+    if (this.story === 'meet') return { pos: this.vanceLocal.clone().add(new Vector3(0, 1.2, 0)), label: 'DR. VANCE' };
+    if (this.story === 'walk' && this.ridge) return { pos: this.ridge.clone().add(new Vector3(0, 1, 0)), label: 'RIDGE' };
+    if (this.canBoard && this.kestrelLocal) return { pos: this.kestrelLocal.clone(), label: 'KESTREL' };
+    return null;
+  }
+  controlsNote() { return this.phase === 'walk' ? 'Walk to the Kestrel: follow the yellow ◆ marker — ladder, hub, hatch, pilot seat. <kbd>E</kbd> at each one.' : null; }
+  interiorTarget() { return this.phase === 'walk' ? 'kestrel' : null; }
   allowUndock() { return this.phase === 'cockpit'; }
   onUndockStart() { this.phase = 'releasing'; }
   warpLimit() { return this.phase === 'surface' || this.phase === 'wrecking' ? 1 : 50; }
@@ -58,8 +69,8 @@ export class IceMission extends Mission {
     const g = this.game;
     this.reachStage('bridge');
     setupDocked(g, SKADI, ORBIT_ALT, { bh: SKADI_BH, fuel: 17500 });
-    g.enterInterior('bridgeConsole', { facing: -1 });
-    placeCrew(g, 'okafor', 10.6, 0.05, 2.1, 1, 'sit');
+    g.enterInterior('bridgeConsole', { facing: 1 });
+    placeCrew(g, 'okafor', BRIDGE_CREW_S, 0.05, 2.1, -1, 'sit');
     this.phase = 'walk';
     const self = this;
     this.run((function* () {
@@ -159,9 +170,12 @@ export class IceMission extends Mission {
     const sp = new SurfacePlayer(g, S);
     this.player = sp;
     const side = S.localDir(K.body.dirToWorld(new Vector3(1, 0, 0))).setY(0).normalize();
-    sp.spawn(kl.x + side.x * 3.2, kl.z + side.z * 3.2, this.vanceLocal.clone().sub(kl).setY(0).normalize());
-    sp.obstacles.push({ x: kl.x, z: kl.z, hx: 2.6, hz: 2.6, h: kl.y + 1.6 });
-    sp.obstacles.push({ x: this.wrenLocal.x, z: this.wrenLocal.z, hx: 2.6, hz: 2.6, h: this.wrenLocal.y + 1.6 });
+    const back = S.localDir(K.body.dirToWorld(new Vector3(0, 0, 1))).setY(0).normalize();
+    // step off beside the nose, clear of the wing, facing the Wren
+    sp.spawn(kl.x + side.x * 3.4 - back.x * 3.6, kl.z + side.z * 3.4 - back.z * 3.6, this.vanceLocal.clone().sub(kl).setY(0).normalize());
+    sp.addLander(kl, side, back);
+    const wr = this.wrenModel.root.rotation.y;
+    sp.addLander(this.wrenLocal, new Vector3(Math.cos(wr), 0, -Math.sin(wr)), new Vector3(Math.sin(wr), 0, Math.cos(wr)));
     this.boardIt = { pos: new Vector3(kl.x + side.x * 2.0, kl.y, kl.z + side.z * 2.0), radius: 3.2, prompt: 'Board the Kestrel', enabled: () => this.canBoard, action: () => this.boardFromSurface() };
     sp.interactables.push(this.boardIt);
     sp.interactables.push({ pos: this.vanceLocal.clone().add(new Vector3(0, 1, 0)), radius: 3.5, prompt: 'Talk to Dr. Vance', enabled: () => this.story === 'meet', action: () => this.meetVance() });

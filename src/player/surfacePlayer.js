@@ -54,13 +54,24 @@ export class SurfacePlayer {
     W.up.set(0, 1, 0);
   }
 
+  // A landed lander as two oriented boxes (fuselage + wings) in local
+  // coords. kl: body centre, side: body +X, back: body +Z (both horizontal).
+  addLander(kl, side, back) {
+    const box = (c, hx, hz, y0, h) => ({ x: c.x, z: c.z, hx, hz, y0, h, ux: side.x, uz: side.z, vx: back.x, vz: back.z });
+    this.obstacles.push(box(kl, 1.9, 7.7, kl.y - 1.4, kl.y + 1.45));
+    this.obstacles.push(box(kl.clone().addScaledVector(back, 3.8), 4.9, 2.9, kl.y - 0.55, kl.y + 0.75));
+  }
+
   sdf(p) {
     let d = p.y - this.surface.height(p.x, p.z);
     d *= 0.95;
     for (const o of this.obstacles) {
-      const dx = Math.max(Math.abs(p.x - o.x) - o.hx, 0), dz = Math.max(Math.abs(p.z - o.z) - o.hz, 0), dy = Math.max(p.y - o.h, 0, (o.y0 ?? -10) - p.y);
+      let ox = p.x - o.x, oz = p.z - o.z;
+      if (o.ux !== undefined) { const a = ox * o.ux + oz * o.uz, b = ox * o.vx + oz * o.vz; ox = a; oz = b; }
+      const y0 = o.y0 ?? -10;
+      const dx = Math.max(Math.abs(ox) - o.hx, 0), dz = Math.max(Math.abs(oz) - o.hz, 0), dy = Math.max(p.y - o.h, 0, y0 - p.y);
       let out = Math.hypot(dx, dy, dz);
-      if (out === 0) out = -Math.min(o.hx - Math.abs(p.x - o.x), o.hz - Math.abs(p.z - o.z));
+      if (out === 0) out = -Math.min(o.hx - Math.abs(ox), o.hz - Math.abs(oz), o.h - p.y, p.y - y0);
       d = Math.min(d, out);
     }
     return d;
@@ -132,7 +143,7 @@ export class SurfacePlayer {
     _m.makeBasis(new Vector3().crossVectors(W.up, W.forward).normalize().negate(), W.up, W.forward.clone().negate());
     a.root.quaternion.setFromRotationMatrix(_m);
     a.animate({ mode: this.downed ? 'down' : W.speed > 0.15 ? (W.running ? 'run' : 'walk') : 'idle', speed: W.speed, dt });
-    a.root.visible = !this.firstPerson || !!this.game.cutscene;
+    a.root.visible = (!this.firstPerson && !this.autoFP) || !!this.game.cutscene;
     a.lamp.intensity = this.flashlight ? 30 : 0;
     const gr = this.surface.planet.surfaceG / G0;
     const depth = this.surface.waterLevel ? this.surface.waterLevel(W.pos.x, W.pos.z) - W.pos.y : -1;
@@ -150,9 +161,23 @@ export class SurfacePlayer {
     let pos;
     if (this.firstPerson) pos = target.clone().addScaledVector(fwd, 0.15);
     else {
-      pos = target.clone().addScaledVector(fwd, -3.2).add(new Vector3(0, 0.6, 0));
-      const gh = this.surface.height(pos.x, pos.z) + 0.3;
-      if (pos.y < gh) pos.y = gh;
+      // over the shoulder, sphere-cast against the terrain and the landers
+      const flatF = W.forward.clone().setY(0).normalize();
+      const pivot = target.clone().add(new Vector3(0, -0.1, 0));
+      const want = pivot.clone().addScaledVector(flatF, -2.8).add(new Vector3(0, 0.45 - Math.sin(W.pitch) * 1.2, 0)).addScaledVector(right, 0.5);
+      const dir = want.clone().sub(pivot);
+      const maxD = dir.length();
+      dir.normalize();
+      let t = 0;
+      for (let i = 0; i < 40 && t < maxD; i++) {
+        const dd = this.sdf(pivot.clone().addScaledVector(dir, t)) - 0.25;
+        if (dd < 0.01) break;
+        t += Math.max(dd, 0.03);
+      }
+      const free = Math.max(0, Math.min(maxD, t - 0.03));
+      this.camDist = this.camDist === undefined ? free : free < this.camDist ? free : this.camDist + (free - this.camDist) * Math.min(1, dt * 2.5);
+      pos = this.camDist < 0.5 ? target.clone().addScaledVector(fwd, 0.15) : pivot.clone().addScaledVector(dir, this.camDist);
+      this.autoFP = this.camDist < 0.5;
     }
     _m.lookAt(pos, pos.clone().add(fwd), up);
     const q = new Quaternion().setFromRotationMatrix(_m);

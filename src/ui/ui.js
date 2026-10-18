@@ -9,6 +9,8 @@ import { Subtitles } from './subtitles.js';
 import { Menus } from './menus.js';
 import { DebugOverlay } from './debugOverlay.js';
 import { MapView } from './mapView.js';
+import { ControlsCard } from './controlsCard.js';
+import { Vector3 } from 'three';
 import { settings } from '../core/settings.js';
 import { formatDuration } from '../physics/timeDilation.js';
 
@@ -34,13 +36,16 @@ export class UI {
     this.fpsEl = div('fps');
     this.miniClock = div('miniclock hidden');
     this.fade = div('fadeblack');
-    root.append(this.banner, this.toastBox, this.promptEl, this.objectivesEl, this.caption, this.coriolis, this.crosshair, this.fpsEl, this.miniClock);
+    this.waypointEl = div('waypoint hidden', '<div class="wp-icon"><svg width="22" height="22" viewBox="-11 -11 22 22"><path d="M0-9L9 0L0 9L-9 0Z" fill="none" stroke="currentColor" stroke-width="2"/><circle r="2.2" fill="currentColor"/></svg></div><div class="wp-arrow">▲</div><div class="wp-lbl"></div>');
+    root.append(this.banner, this.toastBox, this.promptEl, this.objectivesEl, this.caption, this.coriolis, this.crosshair, this.fpsEl, this.miniClock, this.waypointEl);
     this.extra = div('');
     root.appendChild(this.extra);
     root.appendChild(this.fade);
     this.debug = new DebugOverlay(game, root);
     this.map = new MapView(game, root);
     this.menus = new Menus(game, root);
+    this.controls = new ControlsCard(game, root);
+    for (const ev of ['mode', 'player:walk', 'player:float', 'player:ladder']) game.on(ev, () => setTimeout(() => this.controls.modeChanged(), 0));
     this.objectives = { title: '', sub: '', items: [] };
     this.bannerTimer = 0;
     this.promptState = null;
@@ -70,15 +75,59 @@ export class UI {
         const W = g.world;
         const f = W.clock.factor;
         const cur = this.objectives.items.find((i) => !i.done);
-        this.miniClock.innerHTML = `<div class="o">${cur ? cur.text : ''}</div><div>SHIP ${formatDuration(W.clock.ship)}</div><div class="e">EARTH +${formatDuration(W.clock.earth)}</div>${f > 10 ? `<div class="f">dt/dτ ${f.toFixed(0)} · 1 s here = ${formatDuration(f)} there</div>` : ''}`;
+        const detail = settings.get('hudDetail');
+        const clocks = detail || f > 2 || W.clock.earth > W.clock.ship + 3600;
+        const html = `<div class="o">${cur ? cur.text : ''}</div>${clocks ? `${detail ? `<div>SHIP ${formatDuration(W.clock.ship)}</div>` : ''}<div class="e">EARTH +${formatDuration(W.clock.earth)}</div>` : ''}${f > 10 ? `<div class="f">1 s here = ${formatDuration(f)} on Earth</div>` : ''}`;
+        if (html !== this._mcHtml) { this.miniClock.innerHTML = html; this._mcHtml = html; }
       }
     }
+    this.updateWaypoint();
     this.fpsEl.textContent = settings.get('showFps') ? `${g.fps.toFixed(0)} fps · ${g.loop.stepsLastFrame} steps` : '';
+  }
+
+  // aboard the station: marker on the next waypoint toward the objective
+  updateWaypoint() {
+    const g = this.game, ip = g.interiorPlayer, el = this.waypointEl;
+    let wp = null, root = null, from = null;
+    if (!g.cutscene && !this.menus.open) {
+      if (g.mode === 'interior' && ip?.waypoint) { wp = ip.waypoint; root = g.meridianModel.root; from = ip.camLocal; }
+      else if (g.mode === 'surface' && g.surface && g.controller?.walker) {
+        wp = g.mission?.surfaceTarget?.();
+        root = g.surface.group;
+        from = g.controller.walker.pos.clone().add(new Vector3(0, 1.6, 0));
+      }
+    }
+    if (!wp) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const cam = g.pipeline.camera;
+    root.updateMatrixWorld();
+    const p = wp.pos.clone().applyMatrix4(root.matrixWorld);
+    const dist = from.distanceTo(wp.pos);
+    const v = p.clone().project(cam);
+    const w = window.innerWidth, h = window.innerHeight;
+    const behind = v.z > 1;
+    let x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
+    if (behind) { x = w - x; y = h - y; }
+    const m = 60;
+    const off = behind || x < m || x > w - m || y < m || y > h - m;
+    if (off) {
+      // pin to the screen edge, arrow pointing toward the target
+      let dx = x - w / 2, dy = y - h / 2;
+      if (behind && Math.abs(dx) < 1 && Math.abs(dy) < 1) dy = 1;
+      const k = Math.min((w / 2 - m) / Math.max(1e-3, Math.abs(dx)), (h / 2 - m) / Math.max(1e-3, Math.abs(dy)));
+      x = w / 2 + dx * k; y = h / 2 + dy * k;
+      el.querySelector('.wp-arrow').style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+    }
+    el.classList.toggle('off', off);
+    el.style.left = x.toFixed(0) + 'px'; el.style.top = y.toFixed(0) + 'px';
+    const txt = `${wp.label} · ${dist < 10 ? dist.toFixed(1) : dist.toFixed(0)} m`;
+    const lbl = el.querySelector('.wp-lbl');
+    if (lbl._t !== txt) { lbl.textContent = txt; lbl._t = txt; }
   }
 
   handleGlobalKeys(input) {
     const g = this.game;
-    if (g.mode === 'title') return;
+    if (g.mode === 'title' || g.cardOpen) return;
     if (input.hit('Escape')) {
       if (this.menus.open && g.paused) { g.setPaused(false); return; }
       if (g.mapOpen) { g.mapOpen = false; return; }
@@ -86,9 +135,14 @@ export class UI {
       return;
     }
     if (g.paused) return;
-    if (input.hit('Tab')) this.objectivesEl.classList.toggle('hidden');
+    if (input.hit('Tab')) {
+      const show = this.objectivesEl.classList.contains('hidden');
+      if (show) this.renderObjectives();
+      this.objectivesEl.classList.toggle('hidden', !show);
+    }
     if (input.hit('KeyM') && g.mode === 'flight' && !g.cutscene) { g.mapOpen = !g.mapOpen; }
     if (input.hit('KeyP')) this.debug.toggle();
+    if (input.hit('KeyI')) { settings.set('hudDetail', !settings.get('hudDetail')); this.toast(settings.get('hudDetail') ? 'INSTRUMENTS · FULL' : 'INSTRUMENTS · MINIMAL'); }
   }
 
   setObjectives(title, sub, items) {
@@ -106,7 +160,7 @@ export class UI {
   renderObjectives() {
     const o = this.objectives;
     this.objectivesEl.innerHTML = `<h3>${o.title}</h3><div class="sub">${o.sub || ''}</div><ul style="padding:0">${o.items.map((i) => `<li class="${i.done ? 'done' : 'todo'}">${i.text}</li>`).join('')}</ul>
-      <div class="keys">Tab close · Esc pause · P physics overlay · M map · C camera · , . warp</div>`;
+      ${this.controls ? this.controls.tabHtml() : ''}<div class="keys">Tab close · P physics overlay</div>`;
   }
 
   showBanner(text, cls = 'white', dur = 3.5, small = '') {
@@ -137,5 +191,12 @@ export class UI {
     this._capT = setTimeout(() => this.caption.classList.remove('show'), dur * 1000);
   }
   setFade(on) { this.fade.classList.toggle('on', on); }
-  setCoriolis(text) { if (this._cor !== text) { this.coriolis.innerHTML = text || ''; this._cor = text; } }
+  // quick dip to black that hides a camera cut
+  flashFade() {
+    const f = this.fade;
+    f.style.transition = 'none';
+    f.style.opacity = '1';
+    requestAnimationFrame(() => requestAnimationFrame(() => { f.style.transition = 'opacity 0.45s'; f.style.opacity = ''; setTimeout(() => { f.style.transition = ''; }, 500); }));
+  }
+  setCoriolis(text) { const t = settings.get('hudDetail') ? text : ''; if (this._cor !== t) { this.coriolis.innerHTML = t || ''; this._cor = t; } }
 }

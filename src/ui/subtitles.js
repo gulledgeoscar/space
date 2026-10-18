@@ -36,8 +36,12 @@ export class Subtitles {
     }
     const dur = opts.dur ?? Math.max(2.6, text.length * 0.065);
     const item = { who, text, dur, t: 0 };
-    if (opts.priority) { this.queue.unshift(item); if (this.active.length > 1) this.expireOldest(); }
-    else this.queue.push(item);
+    if (opts.priority) {
+      this.queue.unshift(item);
+      for (const a of this.active) if (!a.fading) { a.fading = true; a.el.classList.add('fade'); }
+    } else this.queue.push(item);
+    // keep the backlog short so lines stay in step with what is happening
+    while (this.queue.length > 4) this.queue.splice(1, 1);
     return true;
   }
 
@@ -47,13 +51,15 @@ export class Subtitles {
   expireOldest() { const a = this.active.shift(); if (a) a.el.remove(); }
 
   update(dt) {
+    if (this.game.cardOpen) return;   // hold dialogue until the controls card is dismissed
     for (const a of this.active) {
       a.t += dt;
       if (a.t > a.dur && !a.fading) { a.fading = true; a.el.classList.add('fade'); }
     }
     while (this.active.length && this.active[0].t > this.active[0].dur + 0.6) this.expireOldest();
-    const canStart = this.active.filter((a) => !a.fading).length === 0 || (this.active.length < 2 && this.active.every((a) => a.t > 1.2));
-    if (this.queue.length && canStart && this.active.length < 3) {
+    // one line on screen at a time (the previous one fades out underneath)
+    const canStart = this.active.every((a) => a.fading);
+    if (this.queue.length && canStart && this.active.length < 2) {
       const item = this.queue.shift();
       const sp = SPEAKERS[item.who] || { name: item.who.toUpperCase(), cls: 'crew' };
       const e = document.createElement('div');

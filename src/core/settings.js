@@ -14,6 +14,9 @@ export const DEFAULTS = {
   voice: true,               // CASE-9 speech synthesis
   subtitleSize: 1.0,
   showFps: false,
+  hudDetail: false,          // I: full instrument panels instead of the minimal HUD
+  voiceName: '',             // preferred CASE-9 voice ('' = best available)
+  voiceRate: 1.0,
 };
 
 export const QUALITY = {

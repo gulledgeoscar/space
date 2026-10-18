@@ -57,6 +57,7 @@ export class FreeDockMission extends Mission {
       yield* self.line('case', settings.difficulty.helpers ? 'K kills rotation relative to the port, L kills relative velocity. The clock is running.' : 'No helpers. The clock is running.');
     })());
   }
+  controlsNote() { return 'Slow down near the station, centre on the port, and close in at under ' + settings.difficulty.closing.toFixed(2) + ' m/s.' + (settings.difficulty.helpers ? ' <kbd>K</kbd> and <kbd>L</kbd> hold you steady.' : ''); }
   update(simDt, realDt) {
     super.update(simDt, realDt);
     this.director.update(realDt);

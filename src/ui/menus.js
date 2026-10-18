@@ -97,13 +97,25 @@ export class Menus {
       <div class="srow">Docking difficulty <select data-s="difficulty"><option value="assisted">Assisted — helpers, guidance</option><option value="realistic">Realistic — no auto-stabilisation</option><option value="expert">Expert — dock cam + raw numbers</option></select></div>
       <div class="srow">Master volume <input type="range" min="0" max="1" step="0.05" data-s="masterVolume"></div>
       <div class="srow">Music volume <input type="range" min="0" max="1" step="0.05" data-s="musicVolume"></div>
-      <div class="srow">CASE-9 voice <select data-s="voice" data-bool><option value="true">Speech synthesis</option><option value="false">Subtitles only</option></select></div>
+      <div class="srow">CASE-9 voice <select data-s="voice" data-bool><option value="true">Spoken + subtitles</option><option value="false">Subtitles only</option></select></div>
+      <div class="srow">Voice <select data-s="voiceName" data-voices><option value="">Automatic (most natural)</option></select></div>
+      <div class="srow">Speech speed <input type="range" min="0.75" max="1.3" step="0.05" data-s="voiceRate"></div>
+      <div class="srow"><span></span><button data-a="testvoice" style="width:auto;margin:0;padding:4px 14px">TEST VOICE</button></div>
       <div class="srow">Subtitle size <input type="range" min="0.7" max="1.6" step="0.05" data-s="subtitleSize"></div>
       <div class="srow">Show FPS <select data-s="showFps" data-bool><option value="false">Off</option><option value="true">On</option></select></div>
     </div>
     <div class="note">Assisted adds kill-rotation (K), kill-relative-velocity (L), attitude holds (1–9) and a guidance cue. Helpers fly the same thrusters and burn the same propellant — the physics underneath never changes.</div>
     <button data-a="unlock">UNLOCK ALL MISSIONS</button>
     <button data-a="back">BACK</button></div>`);
+    const voiceSel = box.querySelector('[data-voices]');
+    const fillVoices = () => {
+      const list = this.game.audio?.voice?.list?.() || [];
+      voiceSel.innerHTML = '<option value="">Automatic (most natural)</option>' + list.map((x) => `<option value="${x.name.replace(/"/g, '&quot;')}">${x.name} · ${x.lang}${x.score >= 7 ? ' ★' : ''}</option>`).join('');
+      voiceSel.value = settings.get('voiceName') || '';
+    };
+    fillVoices();
+    if (window.speechSynthesis) window.speechSynthesis.addEventListener?.('voiceschanged', fillVoices);
+    box.querySelector('[data-a=testvoice]').onclick = () => { this.game.audio?.init?.(); this.game.audio?.voice?.test(); };
     for (const inp of box.querySelectorAll('[data-s]')) {
       const k = inp.dataset.s;
       inp.value = String(v[k]);
@@ -122,9 +134,11 @@ export class Menus {
       ['T', 'RCS fine / coarse'], ['C', 'Camera: cockpit / chase / docking'], ['RMB drag', 'Look / orbit chase cam'], ['G', 'Landing gear'],
       ['U', 'Release latches (undock)'], ['Space', 'Stage / confirm'], ['M', 'Map / orbit view'], [', / .', 'Time warp − / +'],
       ['K / L', 'Assisted: kill rotation / kill rel. velocity'], ['1 – 9', 'Assisted: prograde, retro, normal, anti, rad out/in, target, anti, port align'],
-      ['ON FOOT', ''], ['WASD + mouse', 'Walk / look'], ['Shift', 'Run'], ['Space', 'Jump / push off'], ['E (hold)', 'Interact / grab handrail'],
-      ['WASD, Space / Ctrl', 'Suit thrusters (zero-g); Space pushes off walls'], ['Q / E', 'Roll (zero-g)'], ['F', 'Flashlight'], ['V', 'First / third person'], ['B', 'Drop a bolt (watch Coriolis)'],
-      ['GENERAL', ''], ['Tab', 'Objectives'], ['P', 'Physics debug overlay'], ['Esc', 'Pause'],
+      ['ON FOOT', ''], ['WASD + mouse', 'Walk / look'], ['Shift', 'Run'], ['Space', 'Jump'], ['E', 'Interact · hatches · ladders'],
+      ['F', 'Flashlight'], ['V', 'First / third person'], ['B', 'Drop a bolt (watch Coriolis)'],
+      ['ZERO G', ''], ['Mouse', 'Look'], ['W A S D', 'Float (the suit stops you when you let go)'], ['Space / Ctrl', 'Up / down'], ['Shift', 'Faster'], ['E', 'Go through hatches · onto the ladder'],
+      ['LADDER', ''], ['W / S', 'Climb up / down'],
+      ['GENERAL', ''], ['Tab', 'Controls & objectives'], ['I', 'Full instruments'], ['P', 'Physics debug overlay'], ['Esc', 'Pause'],
     ];
     const box = h(`<div class="box" style="width:min(700px,94vw)"><h2>CONTROLS</h2><div class="controls-grid">${rows.map(([a, b]) => (b ? `<b>${a}</b><span>${b}</span>` : `<b style="color:#fff;margin-top:8px">${a}</b><span></span>`)).join('')}</div><button data-a="back" style="margin-top:16px">BACK</button></div>`);
     box.querySelector('[data-a=back]').onclick = back;

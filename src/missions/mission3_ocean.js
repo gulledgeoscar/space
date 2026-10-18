@@ -18,7 +18,7 @@ import { SurfacePlayer } from '../player/surfacePlayer.js';
 import { toStation } from '../ship/interiorLayout.js';
 import { settings } from '../core/settings.js';
 import { G0 } from '../physics/constants.js';
-import { placeCrew } from './mission2_walk.js';
+import { placeCrew, BRIDGE_CREW_S } from './mission2_walk.js';
 
 export const SKADI_BH = { dir: new Vector3(-0.55, 0.25, -0.8).normalize(), dist: 40, inc: 0.1 };
 export const PELAGIA_BH = { dir: new Vector3(0.55, 0.5, -0.67).normalize(), dist: 11, inc: 0.07 };
@@ -53,7 +53,7 @@ export class OceanMission extends Mission {
     this.on('mode', (m) => {
       if (m === 'interior' && this.phase === 'docked') {
         this.phase = 'walkback';
-        placeCrew(this.game, 'okafor', 10.6, 0.05, 2.1, 1, 'sit');
+        placeCrew(this.game, 'okafor', BRIDGE_CREW_S, 0.05, 2.1, -1, 'sit');
         this.say('case', 'Hub, spoke, ring, bridge. You know the way.');
       }
     });
@@ -62,6 +62,13 @@ export class OceanMission extends Mission {
   }
 
   allowExit() { return this.phase === 'docked' || this.phase === 'walkback'; }
+  allowBoard() { return this.phase === 'walk'; }
+  surfaceTarget() {
+    if (this.phase !== 'surface' || !this.beaconLocal) return null;
+    return this.hasBeacon ? { pos: this.kestrelLocal.clone(), label: 'KESTREL' } : { pos: this.beaconLocal.clone().add(new Vector3(0, 1, 0)), label: 'BEACON' };
+  }
+  controlsNote() { return this.phase === 'walk' ? 'Walk to the Kestrel: follow the yellow ◆ marker — ladder, hub, hatch, pilot seat. <kbd>E</kbd> at each one.' : null; }
+  interiorTarget() { return this.phase === 'walk' ? 'kestrel' : this.phase === 'walkback' ? 'bridge' : null; }
   allowUndock() { return this.phase === 'cockpit'; }
   onUndockStart() { this.phase = 'releasing'; }
   warpLimit() { return this.phase === 'surface' ? 1 : 50; }
@@ -71,8 +78,8 @@ export class OceanMission extends Mission {
     const g = this.game;
     this.reachStage('bridge');
     setupDocked(g, SKADI, 300e3, { bh: SKADI_BH, fuel: 17500 });
-    g.enterInterior('bridgeConsole', { facing: -1 });
-    placeCrew(g, 'okafor', 10.6, 0.05, 2.1, 1, 'sit');
+    g.enterInterior('bridgeConsole', { facing: 1 });
+    placeCrew(g, 'okafor', BRIDGE_CREW_S, 0.05, 2.1, -1, 'sit');
     this.phase = 'walk';
     this.windowEnd = this.world.time + WINDOW;
     const self = this;
@@ -244,8 +251,10 @@ export class OceanMission extends Mission {
     const sp = new SurfacePlayer(g, S);
     this.player = sp;
     const side = S.localDir(K.body.dirToWorld(new Vector3(1, 0, 0))).setY(0).normalize();
-    sp.spawn(kl.x + side.x * 3.2, kl.z + side.z * 3.2, this.beaconLocal.clone().sub(kl).setY(0).normalize());
-    sp.obstacles.push({ x: kl.x, z: kl.z, hx: 2.6, hz: 2.6, h: kl.y + 1.6 });
+    const back = S.localDir(K.body.dirToWorld(new Vector3(0, 0, 1))).setY(0).normalize();
+    // step off beside the nose, clear of the wing, facing the beacon
+    sp.spawn(kl.x + side.x * 3.4 - back.x * 3.6, kl.z + side.z * 3.4 - back.z * 3.6, this.beaconLocal.clone().sub(kl).setY(0).normalize());
+    sp.addLander(kl, side, back);
     sp.interactables.push({
       pos: new Vector3(this.beaconLocal.x, this.beaconLocal.y + 1, this.beaconLocal.z), radius: 2.4, hold: 3,
       prompt: 'Recover the SOUNDER-3 beacon', enabled: () => !this.hasBeacon, action: () => this.recoverBeacon(),

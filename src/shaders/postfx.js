@@ -44,7 +44,7 @@ export const PostFXShader = {
         l = smoothstep(0.02, 0.85, l);
         // grain + scanlines
         float g = hash(uv * vec2(1280.0, 720.0) + fract(uTime * 7.13) * 100.0);
-        l += (g - 0.5) * 0.22;
+        l += (g - 0.5) * 0.09 * (1.6 - uSignal * 0.6);
         l *= 0.86 + 0.14 * sin(uv.y * 900.0);
         // rolling brightness bar
         l *= 0.94 + 0.06 * smoothstep(0.0, 0.05, abs(fract(uv.y * 0.5 - uTime * 0.13) - 0.5));

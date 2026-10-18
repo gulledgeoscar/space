@@ -33,9 +33,9 @@ class LayeredRenderPass extends Pass {
   render(renderer, writeBuffer, readBuffer) {
     const p = this.p;
     renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
-    renderer.setClearColor(0x000000, 1);
+    renderer.setClearColor(p.debugSky ? 0xff00ff : 0x000000, 1);   // debugSky: show leaks to space in magenta
     renderer.clear(true, true, true);
-    renderer.render(p.farScene, p.farCamera);
+    if (!p.debugSky) renderer.render(p.farScene, p.farCamera);
     renderer.clearDepth();
     if (p.nearEnabled) renderer.render(p.scene, p.camera);
     if (p.overlayScene) { renderer.clearDepth(); renderer.render(p.overlayScene, p.overlayCamera || p.camera); }

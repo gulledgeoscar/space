@@ -12,6 +12,9 @@ import { toStation } from '../ship/interiorLayout.js';
 import { buildAstronaut } from '../player/astronaut.js';
 import { ORBITS } from '../physics/timeDilation.js';
 
+// Okafor's station chair on the bridge (arc position, m)
+export const BRIDGE_CREW_S = 10.34;
+
 export function placeCrew(game, name, s, h, z, facing = 1, pose = 'sit', suit = 0x3f6f9a) {
   const ip = game.interiorPlayer;
   ip.ensureBuilt();
@@ -35,7 +38,7 @@ export class WalkMission extends Mission {
       setupDocked(g, EARTH, 400e3, { theta: 0.8 });
       g.enterInterior(this.stage === 'hub' ? 'hub' : 'seat');
     }
-    this.okafor = placeCrew(g, 'okafor', 10.6, 0.05, 2.1, 1, 'sit');
+    this.okafor = placeCrew(g, 'okafor', BRIDGE_CREW_S, 0.05, 2.1, -1, 'sit');
     this.briefingText = ['MERIDIAN EXPEDITION ONE', 'Transit: the Aperture, 22 months', 'Target: LETHE · 1e9 M☉ · spin 1 − 10⁻¹⁴', `PELAGIA · ocean · 1.3 g · dt/dτ ${ORBITS.pelagia.factor.toFixed(0)}`, 'SKADI · ice · 0.85 g · Vance beacon', '1 hour on Pelagia = 7 years at home'];
     this.objectives('WALK THE SHIP', 'Hub → Spoke A → ring → bridge, and back', [
       ['hatch', 'Float through the hatch into the hub'],
@@ -56,9 +59,15 @@ export class WalkMission extends Mission {
     this.run((function* () {
       yield { real: 1.5 };
       yield* self.line('case', 'Hard dock holding. Pressure is equal. Welcome home, more or less.');
-      yield* self.line('case', 'The hatch is open. Push off the cabin wall with Space, hold E to grab the handrails, or use the suit thrusters: W A S D, R and F. Gas is limited.');
+      yield* self.line('case', 'The hatch is open. Float to it and press E — I will guide you through. W A S D move you, Space and Ctrl go up and down. Follow the marker.');
       yield* self.line('okafor', 'Kestrel, Okafor. Come down to the bridge when you can. Briefing in ten.');
     })());
+  }
+
+  allowBoard() { return this.phase === 'return'; }
+  allowConsole() { return this.phase === 'bridge' && !this.briefed; }
+  interiorTarget() {
+    return { start: 'hub', hub: 'airlock', spoke: 'airlock', ring: 'console', bridge: 'console', return: 'kestrel' }[this.phase] || null;
   }
 
   flavour() {
@@ -78,7 +87,7 @@ export class WalkMission extends Mission {
       this.phase = 'hub';
       this.complete('hatch');
       this.say('case', 'This is the hub. Near the axis the centrifugal pull is a few thousandths of a g. Not nothing: anything you let go of drifts slowly outward.');
-      this.say('case', 'Spoke A is the hatch with the yellow ring. The ladder is on its spinward wall.');
+      this.say('case', 'Spoke A is the hatch with the yellow ring. Float over to it and press E to climb down.');
     }
     if (a === 'spoke' && this.phase === 'hub') {
       this.phase = 'spoke';
@@ -103,8 +112,8 @@ export class WalkMission extends Mission {
     const ip = g.interiorPlayer;
     ip.enabled = false;
     g.ui.setLetterbox(true);
-    const cs = 17.2;
-    g.cutscene = { camera: stationCamera(g, toStation(cs - 2.6, 1.55, 0.3), toStation(cs + 0.75, 1.85, 0), { fov: 42, drift: (t, p) => p.add(new Vector3(0, 0, Math.sin(t * 0.1) * 0.4)) }) };
+    const cs = ip.interior.consoleS;
+    g.cutscene = { camera: stationCamera(g, toStation(cs + 2.6, 1.55, 0.3), toStation(cs - 0.75, 1.85, 0), { fov: 42, drift: (t, p) => p.add(new Vector3(0, 0, Math.sin(t * 0.1) * 0.4)) }) };
     this.run((function* () {
       yield* self.lines([
         ['okafor', 'Twenty-two months to the Aperture. On the other side: Lethe.'],

@@ -64,6 +64,36 @@ export function quatAt(s, yaw = 0) {
 }
 
 const boxIn = (x, x0, x1) => Math.min(x - x0, x1 - x);
+// signed distance outside an axis-aligned box [x0,x1,y0,y1,z0,z1] (negative inside)
+function boxOut(x, y, z, b) {
+  const dx = Math.max(b[0] - x, 0, x - b[1]), dy = Math.max(b[2] - y, 0, y - b[3]), dz = Math.max(b[4] - z, 0, z - b[5]);
+  const out = Math.hypot(dx, dy, dz);
+  return out > 0 ? out : -Math.min(x - b[0], b[1] - x, y - b[2], b[3] - y, z - b[4], b[5] - z);
+}
+function segDist(x, y, z, a, b) {
+  const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * abx + (y - a[1]) * aby + (z - a[2]) * abz) / (abx * abx + aby * aby + abz * abz)));
+  return Math.hypot(x - a[0] - abx * t, y - a[1] - aby * t, z - a[2] - abz * t);
+}
+
+// Kestrel cabin (Kestrel body coords). The hatch sits low in the forward
+// bulkhead; its tunnel slopes up to the docking ring on the nose axis.
+export const KESTREL_HATCH = { x: 0, y: -0.12, z: -5.84, r: 0.5 };
+export const NOSE_TUBE = { a: [0, -0.12, -5.5], b: [0, 0, -7.3], r: 0.5 };
+export const CABIN_OBSTACLES = [
+  [-0.42, 0.42, -0.55, 1.42, -4.78, -3.98],    // pilot seat
+  [-1.2, 1.2, 0.3, 1.6, -5.95, -5.3],          // glareshield, MFDs, windscreen
+  [-1.2, -0.62, -0.6, 1.6, -5.95, -5.3],       // panel wings either side of the hatch
+  [0.62, 1.2, -0.6, 1.6, -5.95, -5.3],
+  [-0.9, -0.3, -0.55, 0.78, -3.45, -2.6],      // passenger seats
+  [0.3, 0.9, -0.55, 0.78, -3.45, -2.6],
+];
+// Kestrel body coords -> station frame for a Kestrel docked with `roll`
+export function kestrelToStation(x, y, z, roll, out = new Vector3()) {
+  const c = Math.cos(roll), s = Math.sin(roll);
+  return out.set(x * c - y * s, x * s + y * c, z + KESTREL_DOCKED_Z);
+}
+export function kestrelUp(roll, out = new Vector3()) { return out.set(-Math.sin(roll), Math.cos(roll), 0); }
 
 // Obstacles (furniture) in unrolled coords: { s0, s1, h0, h1, z0, z1 }
 export const OBSTACLES = [];
@@ -97,7 +127,9 @@ export class InteriorSpace {
       }
       for (const door of this.doors) {
         if (door.open < 0.85 || Math.abs(u.s - door.s) > 2) continue;
-        const d = Math.min(boxIn(u.s, door.s - 0.5, door.s + 0.5), boxIn(u.h, 0, DOOR_H), boxIn(u.z, -DOOR_W, DOOR_W));
+        // the doorway volume reaches well into both rooms, so the clearance
+        // never dips below the body radius where it meets the room boxes
+        const d = Math.min(boxIn(u.s, door.s - 1.2, door.s + 1.2), boxIn(u.h, 0, DOOR_H), boxIn(u.z, -DOOR_W, DOOR_W));
         if (d > best) best = d;
       }
       // furniture
@@ -134,10 +166,15 @@ export class InteriorSpace {
       // Kestrel body coords: rotate by -roll about Z, shift by docked z
       const c = Math.cos(-this.kestrelRoll), s = Math.sin(-this.kestrelRoll);
       const kx = p.x * c - p.y * s, ky = p.x * s + p.y * c, kz = p.z - KESTREL_DOCKED_Z;
-      const tun = Math.min(0.42 - Math.hypot(kx, ky + 0.06), kz - (-7.2), -5.6 - kz);
-      if (tun > best) best = tun;
-      const cab = Math.min(boxIn(kx, -1.1, 1.1), boxIn(ky, -0.53, 1.47), boxIn(kz, -5.82, -2.66));
-      if (cab > best) best = cab;
+      if (kz > -7.6 && kz < -2.2) {
+        // nose tunnel: from the cabin hatch (low in the forward bulkhead) to the dock ring
+        const tun = NOSE_TUBE.r - segDist(kx, ky, kz, NOSE_TUBE.a, NOSE_TUBE.b);
+        if (tun > best) best = tun;
+        // cabin, minus the pilot seat, console/windscreen and passenger seats
+        let cab = Math.min(boxIn(kx, -1.1, 1.1), boxIn(ky, -0.53, 1.47), boxIn(kz, -5.82, -2.66));
+        if (cab > -0.5) for (const o of CABIN_OBSTACLES) cab = Math.min(cab, boxOut(kx, ky, kz, o));
+        if (cab > best) best = cab;
+      }
     }
     return best;
   }
