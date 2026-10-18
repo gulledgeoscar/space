@@ -73,6 +73,12 @@ export const PostFXShader = {
         col = mix(col, vec3(l), uGreyout);
         col *= smoothstep(1.2 - uGreyout, 0.1, d * (0.6 + uGreyout));
       }
+      // grade (linear HDR, before tone mapping): a touch more saturation,
+      // cool shadows, warm highlights
+      float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      col = max(vec3(0.0), mix(vec3(lum), col, 1.08));
+      float hi = smoothstep(0.05, 1.2, lum);
+      col *= mix(vec3(0.97, 1.0, 1.05), vec3(1.04, 1.0, 0.95), hi);
       // standard lens vignette
       col *= 1.0 - uVignette * smoothstep(0.45, 1.25, d);
       // damage flash (hot white then red)

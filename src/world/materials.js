@@ -1,7 +1,7 @@
 // Shared PBR material library with procedurally painted canvas textures.
 
-import { MeshStandardMaterial, MeshBasicMaterial, Color, DoubleSide, AdditiveBlending } from 'three';
-import { canvasTexture } from './geometry.js';
+import { MeshStandardMaterial, MeshPhysicalMaterial, MeshBasicMaterial, Color, DoubleSide, AdditiveBlending, Vector2 } from 'three';
+import { canvasTexture, normalMapFrom } from './geometry.js';
 
 function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
@@ -74,10 +74,15 @@ export function materials() {
   if (LIB) return LIB;
   const hullTex = hullPanels();
   const interiorTex = hullPanels('#c5c8c9', 'rgba(30,35,40,0.45)', 9);
+  const tileTex = tiles(), gratingTex = grating();
+  // normal maps from the same paint: seams become grooves, grates go deep
+  const hullN = normalMapFrom(hullTex, 3.0), interiorN = normalMapFrom(interiorTex, 2.6);
+  const tileN = normalMapFrom(tileTex, 2.0), gratingN = normalMapFrom(gratingTex, 4.0);
+  const nScale = (k) => new Vector2(k, k);
   LIB = {
-    hull: new MeshStandardMaterial({ color: 0xffffff, map: hullTex, roughness: 0.62, metalness: 0.15 }),
-    hullDark: new MeshStandardMaterial({ color: 0x8a8d92, map: hullTex, roughness: 0.55, metalness: 0.35 }),
-    tiles: new MeshStandardMaterial({ color: 0xffffff, map: tiles(), roughness: 0.9, metalness: 0.0 }),
+    hull: new MeshPhysicalMaterial({ color: 0xffffff, map: hullTex, normalMap: hullN, normalScale: nScale(0.7), roughness: 0.55, metalness: 0.12, clearcoat: 0.25, clearcoatRoughness: 0.4 }),
+    hullDark: new MeshStandardMaterial({ color: 0x8a8d92, map: hullTex, normalMap: hullN, normalScale: nScale(0.6), roughness: 0.5, metalness: 0.4 }),
+    tiles: new MeshStandardMaterial({ color: 0xffffff, map: tileTex, normalMap: tileN, normalScale: nScale(0.8), roughness: 0.9, metalness: 0.0 }),
     accent: new MeshStandardMaterial({ color: 0xd8641e, roughness: 0.5, metalness: 0.1 }),
     gold: new MeshStandardMaterial({ color: 0xc9a043, roughness: 0.35, metalness: 1.0 }),
     foil: new MeshStandardMaterial({ color: 0xd9b25a, roughness: 0.28, metalness: 0.9 }),
@@ -85,9 +90,9 @@ export function materials() {
     darkMetal: new MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.8 }),
     rubber: new MeshStandardMaterial({ color: 0x18191b, roughness: 0.9, metalness: 0.0 }),
     nozzle: new MeshStandardMaterial({ color: 0x3a3330, roughness: 0.45, metalness: 0.85, side: DoubleSide }),
-    panel: new MeshStandardMaterial({ color: 0xaab0b5, map: interiorTex, roughness: 0.72, metalness: 0.12 }),
-    panelDark: new MeshStandardMaterial({ color: 0x5a6068, map: interiorTex, roughness: 0.6, metalness: 0.2 }),
-    floor: new MeshStandardMaterial({ color: 0xffffff, map: grating(), roughness: 0.8, metalness: 0.6 }),
+    panel: new MeshStandardMaterial({ color: 0xaab0b5, map: interiorTex, normalMap: interiorN, normalScale: nScale(0.8), roughness: 0.68, metalness: 0.12 }),
+    panelDark: new MeshStandardMaterial({ color: 0x5a6068, map: interiorTex, normalMap: interiorN, normalScale: nScale(0.8), roughness: 0.55, metalness: 0.25 }),
+    floor: new MeshStandardMaterial({ color: 0xffffff, map: gratingTex, normalMap: gratingN, normalScale: nScale(1.0), roughness: 0.7, metalness: 0.65 }),
     hazard: new MeshStandardMaterial({ color: 0xffffff, map: hazard(), roughness: 0.7, metalness: 0.1 }),
     glass: new MeshStandardMaterial({ color: 0x223040, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.18, depthWrite: false }),
     solar: new MeshStandardMaterial({ color: 0x0c1a3a, roughness: 0.25, metalness: 0.6, emissive: 0x020612 }),

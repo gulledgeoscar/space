@@ -729,8 +729,19 @@ export class Game {
     const env = { atmo, up, atmoColor: new Color(c[0], c[1], c[2]), starGain: 1 - Math.min(0.97, atmo * 4) };
     if (this.surface?.fog) { env.fog = this.surface.fog; env.fogColor = this.surface.fogColor; }
     if (this.surface) env.hideSurface = this.surface.hideFarSurface ? this.surface.hideFarSurface(alt) : 0;
-    // ambient light from the sky when inside an atmosphere
-    this.hemi.intensity = 0.05 + atmo * 0.45;
+    // fill light: sky from above, planet-shine from below (oriented along the
+    // local vertical, dimmer on the night side) so shadowed hulls aren't black
+    if (this.mode === 'interior') {
+      this.hemi.position.set(0, 1, 0);
+      this.hemi.intensity = 0.05;
+    } else {
+      this.hemi.position.copy(up);
+      const day = Math.max(0.15, this.sky.lightDir.dot(up) * 0.5 + 0.5);
+      const near = Math.max(0, 1 - Math.max(0, alt) / (pl.radius * 4));
+      this.hemi.color.setRGB(0.16 + c[0] * atmo * 0.6, 0.2 + c[1] * atmo * 0.6, 0.3 + c[2] * atmo * 0.6);
+      this.hemi.groundColor.setRGB(c[0] * 0.5 + 0.08, c[1] * 0.5 + 0.08, c[2] * 0.5 + 0.08);
+      this.hemi.intensity = 0.06 + atmo * 0.45 + 0.32 * near * day;
+    }
     return env;
   }
 }

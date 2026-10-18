@@ -158,7 +158,13 @@ Rendering uses two layers: a far scene (the lensed sky and a ray-traced planet),
 
 ### Performance
 
-The target is 60 fps on a laptop GPU. If you drop frames, use **Settings → Graphics: Low**: it lowers the render resolution, turns off shadows, and uses fewer black-hole ray-march steps and a lower-resolution sky.
+The target is 60 fps on a laptop GPU. The graphics presets:
+
+- **Low**: reduced resolution, no shadows, FXAA, fewer black-hole ray-march steps and a lower-resolution sky.
+- **Medium** (default): shadows and 4× MSAA.
+- **High**: higher resolution, 4096 shadow maps and GTAO ambient occlusion (soft contact shadows in corners and under furniture).
+
+All presets use generated normal maps for hull plating, interior panels and floor gratings. If you drop frames, use **Settings → Graphics: Low**.
 
 ## Dev helpers
 
