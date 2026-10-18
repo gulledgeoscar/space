@@ -8,6 +8,7 @@ import {
   Color, PointLight, DoubleSide, CircleGeometry, ConeGeometry, IcosahedronGeometry, InstancedMesh, Object3D,
   CatmullRomCurve3, TubeGeometry, RingGeometry, AdditiveBlending, SpriteMaterial, Sprite, CanvasTexture,
 } from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { GeoBatch, canvasTexture, labelTexture } from '../world/geometry.js';
 import { materials } from '../world/materials.js';
 import {
@@ -70,7 +71,13 @@ class Builder {
     this.b.addMatrix(g, mat, m);
   }
   // w along tangent (s), ht along up (h, base at h), d along z (centred)
-  box(w, ht, d, mat, s, h, z, yaw = 0) { this.geo(new BoxGeometry(w, ht, d), mat, s, h + ht / 2, z, yaw); }
+  // furniture-sized boxes get softly rounded edges (they catch highlights);
+  // thin trim and small parts stay sharp and cheap
+  box(w, ht, d, mat, s, h, z, yaw = 0) {
+    const m = Math.min(w, ht, d);
+    const g = m > 0.1 && Math.max(w, ht, d) > 0.3 ? new RoundedBoxGeometry(w, ht, d, 2, Math.min(0.035, m * 0.18)) : new BoxGeometry(w, ht, d);
+    this.geo(g, mat, s, h + ht / 2, z, yaw);
+  }
   cylUp(r, ht, mat, s, h, z, seg = 16) { this.geo(new CylinderGeometry(r, r, ht, seg), mat, s, h + ht / 2, z); }
   cylZ(r, len, mat, s, h, z, seg = 12) { this.geo(new CylinderGeometry(r, r, len, seg), mat, s, h, z, 0, new Matrix4().makeRotationX(Math.PI / 2)); }
   cylT(r, len, mat, s, h, z, seg = 12) { this.geo(new CylinderGeometry(r, r, len, seg), mat, s, h, z, 0, new Matrix4().makeRotationZ(Math.PI / 2)); }

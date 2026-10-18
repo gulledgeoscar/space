@@ -20,9 +20,9 @@ export const DEFAULTS = {
 };
 
 export const QUALITY = {
-  low: { pixelRatio: 0.75, shadows: false, shadowSize: 1024, bloom: true, skyScale: 0.6, bhSteps: 70, cube: 1024, antialias: false },
-  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, skyScale: 0.85, bhSteps: 110, cube: 1024, antialias: false },
-  high: { pixelRatio: 1.5, shadows: true, shadowSize: 2048, bloom: true, skyScale: 1.0, bhSteps: 160, cube: 2048, antialias: true },
+  low: { pixelRatio: 0.75, shadows: false, shadowSize: 1024, bloom: true, skyScale: 0.6, bhSteps: 70, cube: 1024, antialias: false, msaa: 0, fxaa: true, ao: false },
+  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, skyScale: 0.85, bhSteps: 110, cube: 1024, antialias: false, msaa: 4, fxaa: false, ao: false },
+  high: { pixelRatio: 1.5, shadows: true, shadowSize: 4096, bloom: true, skyScale: 1.0, bhSteps: 160, cube: 2048, antialias: true, msaa: 4, fxaa: false, ao: true },
 };
 
 // Capture tolerances for each docking difficulty. Realistic is the spec:

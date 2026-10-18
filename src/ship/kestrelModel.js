@@ -7,7 +7,7 @@ import {
   Group, Mesh, MeshStandardMaterial, Color, Vector3, Shape, ExtrudeGeometry, LatheGeometry,
   Vector2, CylinderGeometry, BoxGeometry, TorusGeometry, SphereGeometry, PointLight, SpotLight,
   ConeGeometry, Float32BufferAttribute, PlaneGeometry, MeshBasicMaterial, DoubleSide, AdditiveBlending,
-  CanvasTexture, BackSide, RingGeometry,
+  CanvasTexture, BackSide, RingGeometry, MeshPhysicalMaterial,
 } from 'three';
 import { loft, GeoBatch, canvasTexture, labelTexture } from '../world/geometry.js';
 import { materials } from '../world/materials.js';
@@ -75,8 +75,10 @@ export function buildKestrelModel({ livery = 'kestrel' } = {}) {
   const root = new Group();
   root.name = 'KestrelModel';
   const isWren = livery === 'wren';
-  const hullMat = new MeshStandardMaterial({
-    color: 0xffffff, map: M.hull.map, roughness: 0.6, metalness: 0.15, vertexColors: true,
+  // white paint with a light clearcoat over the panel normal map
+  const hullMat = new MeshPhysicalMaterial({
+    color: 0xffffff, map: M.hull.map, normalMap: M.hull.normalMap, normalScale: new Vector2(0.55, 0.55),
+    roughness: 0.5, metalness: 0.1, clearcoat: 0.35, clearcoatRoughness: 0.3, vertexColors: true,
     emissive: new Color(0, 0, 0),
   });
   const accent = isWren ? new MeshStandardMaterial({ color: 0x2f7d8c, roughness: 0.5 }) : M.accent;

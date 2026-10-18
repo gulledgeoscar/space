@@ -122,6 +122,43 @@ export function canvasTexture(w, h, draw, { repeat = null, srgb = true } = {}) {
   return t;
 }
 
+// Normal map derived from a canvas texture's brightness (dark = recessed):
+// panel seams become grooves, rivets and plates catch the light.
+export function normalMapFrom(tex, strength = 2.5, { invert = false } = {}) {
+  const src = tex.userData.canvas;
+  const w = src.width, h = src.height;
+  const data = src.getContext('2d').getImageData(0, 0, w, h).data;
+  const H = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const l = (data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114) / 255;
+    H[i] = invert ? 1 - l : l;
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(w, h);
+  const at = (x, y) => H[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // Sobel gradient of the height field
+      const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
+      const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
+      let nx = -dx * strength, ny = dy * strength, nz = 1;
+      const l = Math.hypot(nx, ny, nz);
+      nx /= l; ny /= l; nz /= l;
+      const o = (y * w + x) * 4;
+      out.data[o] = (nx * 0.5 + 0.5) * 255; out.data[o + 1] = (ny * 0.5 + 0.5) * 255; out.data[o + 2] = (nz * 0.5 + 0.5) * 255; out.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  const t = new CanvasTexture(c);
+  t.anisotropy = 4;
+  t.minFilter = LinearMipmapLinearFilter;
+  t.wrapS = tex.wrapS; t.wrapT = tex.wrapT;
+  t.repeat.copy(tex.repeat);
+  return t;
+}
+
 // Simple text label texture.
 export function labelTexture(lines, { w = 512, h = 128, bg = '#1a1d22', fg = '#e8e2d0', border = '#e8c27a', font = 'Rajdhani', size = 54, stripes = false } = {}) {
   if (typeof lines === 'string') lines = [lines];

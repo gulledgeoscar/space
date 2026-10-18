@@ -448,7 +448,7 @@ export class InteriorPlayer {
       root.position.copy(W.pos);
       _m.makeBasis(new Vector3().crossVectors(W.up, W.forward).normalize().negate(), W.up, W.forward.clone().negate());
       root.quaternion.setFromRotationMatrix(_m);
-      a.animate({ mode: W.speed > 0.15 ? (W.running ? 'run' : 'walk') : 'idle', speed: W.speed, dt });
+      a.animate(this.posePreview ? { ...this.posePreview, dt } : { mode: W.speed > 0.15 ? (W.running ? 'run' : 'walk') : 'idle', speed: W.speed, dt });
     } else if (this.mode === 'ladder') {
       const t = this.ladderTangent();
       const body = this.ladderBodyPos(new Vector3());
@@ -463,7 +463,7 @@ export class InteriorPlayer {
       root.position.copy(F.pos).addScaledVector(F.up(), -0.95);
       a.animate({ mode: 'float', dt });
     }
-    root.visible = this.mode === 'walk' && !this.firstPerson && !this.autoFP && !this.game.cutscene;
+    root.visible = this.game.cutscene ? this.mode === 'walk' : this.mode === 'walk' && !this.firstPerson && !this.autoFP;
     // area announcements + ambience
     const area = this.interior.space.area(pp);
     if (area !== this.area) {

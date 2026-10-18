@@ -10,12 +10,16 @@
 //                   buffer is cleared in between.
 // Everything near is positioned relative to a floating origin (the focus
 // craft or the station), so float32 GPU precision never sees 10^6 m numbers.
-// Then: UnrealBloom -> PostFX (G-load, docking camera, damage) -> Output.
+// Then: GTAO (high) -> UnrealBloom -> PostFX (G-load, docking camera,
+// damage, grade) -> Output -> FXAA (low). The layered pass renders into a
+// multisampled half-float target (MSAA on medium/high).
 
 import {
   WebGLRenderer, Scene, PerspectiveCamera, ACESFilmicToneMapping, SRGBColorSpace,
-  PCFSoftShadowMap, Vector2, Vector3, Quaternion, Color, HalfFloatType,
+  PCFSoftShadowMap, Vector2, Vector3, Quaternion, Color, HalfFloatType, WebGLRenderTarget,
 } from 'three';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -68,15 +72,25 @@ export class RenderPipeline {
     this.camInertialQuat = new Quaternion();
     this.origin = new Vector3();             // floating origin in inertial frame
 
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.renderTarget1.texture.type = HalfFloatType;
+    this.composer = new EffectComposer(this.renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.msaa || 0 }));
     this.layered = new LayeredRenderPass(this);
     this.composer.addPass(this.layered);
+    // ambient occlusion of the near layer (contact shadows in corners, under
+    // furniture, where wings meet the hull)
+    this.gtao = new GTAOPass(this.scene, this.camera, 512, 512);
+    this.gtao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 12 });
+    this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+    this.gtao.blendIntensity = 0.85;
+    this.gtao.enabled = !!q.ao;
+    this.composer.addPass(this.gtao);
     this.bloom = new UnrealBloomPass(new Vector2(512, 512), 0.5, 0.45, 1.15);
     this.composer.addPass(this.bloom);
     this.post = new ShaderPass(PostFXShader);
     this.composer.addPass(this.post);
     this.composer.addPass(new OutputPass());
+    this.fxaa = new ShaderPass(FXAAShader);
+    this.fxaa.enabled = !!q.fxaa;
+    this.composer.addPass(this.fxaa);
 
     this.size = new Vector2(1, 1);
     this.beforeRender = [];
@@ -92,6 +106,9 @@ export class RenderPipeline {
     const q = settings.quality;
     this.renderer.shadowMap.enabled = q.shadows;
     this.bloom.enabled = q.bloom;
+    this.gtao.enabled = !!q.ao;
+    this.fxaa.enabled = !!q.fxaa;
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) { rt.samples = q.msaa || 0; rt.dispose(); }
     this.resize();
     for (const fn of this.qualityListeners || []) fn(q);
   }
@@ -109,6 +126,8 @@ export class RenderPipeline {
     this.composer.setPixelRatio(this.pixelRatio);
     this.composer.setSize(w, h);
     this.bloom.setSize(Math.floor(w * this.pixelRatio * 0.5), Math.floor(h * this.pixelRatio * 0.5));
+    this.gtao.setSize(Math.floor(w * this.pixelRatio), Math.floor(h * this.pixelRatio));
+    this.fxaa.material.uniforms.resolution.value.set(1 / (w * this.pixelRatio), 1 / (h * this.pixelRatio));
     this.size.set(w, h);
     for (const cam of [this.camera, this.farCamera]) { cam.aspect = w / h; cam.updateProjectionMatrix(); }
     this.post.uniforms.uAspect.value = w / h;
