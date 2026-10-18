@@ -24,8 +24,9 @@ import {
 } from '../physics/constants.js';
 
 export const MODULE_MID_R = (RING_FLOOR_R + RING_CEIL_R) / 2 + 0.1; // 38.3 m centroid
-export const MODULE_MASS = 22000;
-export const BALLAST_MASS = 1200;
+export const MODULE_MASS = 20000;
+// radiation-shielding water jackets double as ballast (5 t per module)
+export const BALLAST_MASS = 5000;
 export const RIM_R = 41.2;
 export const RIM_THRUST = 25000;
 export const SPOKE_MODULES = [2, 5, 8, 11];
