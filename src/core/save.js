@@ -6,7 +6,7 @@ function load() {
   try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
 }
 
-const state = Object.assign({ unlocked: 1, completed: [], freeDockScores: [] }, load());
+const state = Object.assign({ unlocked: 1, completed: [], freeDockScores: [], stages: {} }, load());
 
 function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ }
@@ -21,6 +21,12 @@ export const progress = {
     persist();
   },
   unlockAll() { state.unlocked = 6; persist(); },
+  reachStage(m, id) {
+    const k = String(m);
+    state.stages[k] = state.stages[k] || [];
+    if (!state.stages[k].includes(id)) { state.stages[k].push(id); persist(); }
+  },
+  reachedStage(m, id) { return state.unlocked > m || (state.stages[String(m)] || []).includes(id); },
   reset() { state.unlocked = 1; state.completed = []; persist(); },
   get scores() { return state.freeDockScores.slice(); },
   addScore(entry) {

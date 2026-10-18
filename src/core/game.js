@@ -25,6 +25,10 @@ import { buildMeridianModel } from '../ship/meridianModel.js';
 import { buildDockingPortModel } from '../ship/dockingPort.js';
 import { KESTREL } from '../ship/kestrel.js';
 import { PilotController } from '../player/piloting.js';
+import { UI } from '../ui/ui.js';
+import { AudioEngine } from '../audio/audio.js';
+import { MISSION_CLASSES } from '../missions/index.js';
+import { G0 } from '../physics/constants.js';
 
 const _v = new Vector3();
 const _w = new Vector3();
@@ -64,6 +68,14 @@ export class Game {
     this.pilot = new PilotController(this);
     this.controller = this.pilot;
     this.setupTrajectory();
+    this.audio = new AudioEngine();
+    this.ui = new UI(this, uiRoot);
+    this.pilotG = 0;
+    this.alarm = false;
+    this.extraWarnings = [];
+    const unlockAudio = () => this.audio.init();
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
     this.pipeline.onResize((w, h) => this.particles.setScale(h * this.pipeline.pixelRatio, this.pipeline.camera.fov));
     this.particles.setScale(window.innerHeight * this.pipeline.pixelRatio, 70);
     this._last = performance.now();
@@ -192,15 +204,137 @@ export class Game {
       });
       this.renderAlpha = this.loop.alpha;
       this.simDt = steps * PHYSICS_DT;
+      this.alarm = false;
       this.mission?.update?.(this.simDt, dt);
       this.processEvents();
+      this.updatePilotLoad(dt);
     } else {
       this.simDt = 0;
       if (this.mode === 'title') this.titleUpdate?.(dt);
     }
     this.updateVisuals(dt);
+    this.updateAudio(dt);
     this.render(dt);
     input.endFrame();
+  }
+
+  // Pilot's felt acceleration at the eye -> red-out / grey-out with a
+  // physiological lag (blood takes seconds to pool).
+  updatePilotLoad(dt) {
+    const W = this.world, K = W.kestrel;
+    let f;
+    if (this.mode === 'flight' && W.kestrelActive) {
+      if (K.body.frozen && W.docking.state !== 'free') {
+        const S = W.meridian.body;
+        const eye = K.body.bodyToWorld(_v.set(...KESTREL.eye), new Vector3());
+        const r = new Vector3().subVectors(eye, S.pos);
+        f = new Vector3().crossVectors(S.omega, new Vector3().crossVectors(S.omega, r));
+      } else if (K.body.frozen) f = new Vector3();
+      else f = K.computePilotLoad(W.gravityAtKestrel).clone();
+      const up = K.body.dirToWorld(_w.set(0, 1, 0), new Vector3());
+      const gz = f.dot(up) / G0;
+      this.pilotG = (f.length() / G0) * (gz < 0 ? -1 : 1);
+      const red = Math.min(1, Math.max(0, (-gz - 1.8) / 3.2));
+      const grey = Math.min(1, Math.max(0, (gz - 4.0) / 3.5));
+      this.fx.redout += (red - this.fx.redout) * Math.min(1, dt * 0.6);
+      this.fx.greyout += (grey - this.fx.greyout) * Math.min(1, dt * 0.5);
+      // structural vibration felt as shake
+      const coarse = K.rcsMode === 'coarse';
+      let rcs = 0; for (const th of K.thrusters) rcs += th.level;
+      this.shake = Math.max(this.shake, (K.booster ? K.booster.level * 0.9 : K.mainLevel * 0.35) + (coarse ? rcs * 0.03 : 0) + Math.min(1.5, K.q / 30000) + Math.max(0, Math.abs(gz) - 2) * 0.12);
+    } else {
+      this.fx.redout *= Math.exp(-dt);
+      this.fx.greyout *= Math.exp(-dt);
+      this.pilotG = 0;
+    }
+  }
+
+  updateAudio(dt) {
+    const a = this.audio;
+    if (!a.ready) return;
+    const W = this.world, K = W.kestrel;
+    let rcs = 0, pan = 0;
+    const inFlight = this.mode === 'flight' && W.kestrelActive;
+    if (inFlight && !this.paused) for (const th of K.thrusters) { rcs += th.level; pan += th.level * th.pos.x; }
+    const engine = inFlight && !this.paused ? (K.booster ? K.booster.level * 1.4 : K.mainLevel) : 0;
+    a.update(dt, {
+      rcs, coarse: K.rcsMode === 'coarse', rcsPan: rcs > 0 ? pan / rcs / 2 : 0,
+      engine, q: inFlight ? K.q : 0, airspeed: inFlight ? K.body.vel.distanceTo(W.surfaceVelocity(K.body.pos, _v)) : 0,
+      hum: this.paused ? 0.2 : (this.mode === 'interior' ? 1 : inFlight ? 0.45 : 0.15) * (this.humScale ?? 1),
+      water: this.waterLevel || 0,
+      klaxon: !this.paused && (this.alarm || this.missionAlarm),
+      caution: !this.paused && inFlight && (this.ui.hud.activeWarnings || 0) > 0,
+      heart: this.heart || 0,
+    });
+  }
+
+  // ---- missions ----------------------------------------------------------------
+  resetWorld() {
+    this.world = new World();
+    this.interior?.reset?.();
+    this.surface?.dispose?.();
+    this.surface = null;
+    this.cutscene = null;
+    this.particles.clear();
+    this.fx.redout = this.fx.greyout = this.fx.damage = this.fx.fade = 0;
+    this.warp = 1;
+    this.pilot.enabled = true; this.pilot.lockControls = false; this.pilot.allowMain = true;
+    this.pilot.killRot = false; this.pilot.killVel = false; this.pilot.attMode = null; this.pilot.burnTarget = null;
+    this.ui.hud.cues.clear();
+    this.ui.hud.phaseText = null; this.ui.hud.phaseSub = null;
+    this.extraWarnings = [];
+    this.missionAlarm = false;
+    this.heart = 0;
+    this.mapNode = null;
+    this.mapOpen = false;
+    this.ui.subs.clear();
+    this.ui.setLetterbox(false);
+    this.ui.prompt(null);
+    this.audio.organ?.stop(1);
+    this.audio.voice?.cancel();
+    if (this.wrenModel) this.wrenModel.root.visible = false;
+    for (const e of this.extraMeshes || []) e.parent?.remove(e);
+    this.extraMeshes = [];
+  }
+
+  startMission(id, stage = null, restore = null) {
+    this.mission?.dispose?.();
+    this.resetWorld();
+    this.ui.menus.clear();
+    this.paused = false;
+    const Cls = MISSION_CLASSES[id];
+    this.mission = new Cls(this, stage);
+    this.mission.start();
+    if (restore) {
+      this.world.restore(restore.world, PLANETS);
+      this.mission.onRestore?.(restore.extra);
+      this.mission.checkpointData = restore;
+      this.mission.checkpointName = restore.name || this.mission.checkpointName;
+    }
+    this.input.wantLock = true;
+    this.input.requestLock();
+  }
+  restartMission(id, stage, data) { this.startMission(id, stage, data); }
+
+  onMissionComplete(mission, results) {
+    this.input.exitLock();
+    setTimeout(() => this.ui.menus.results(results), results.delay ?? 1500);
+  }
+
+  setPaused(p) {
+    this.paused = p;
+    if (p) { this.ui.menus.pause(); this.input.exitLock(); this.audio.voice?.cancel(); }
+    else { this.ui.menus.clear(); this.input.requestLock(); }
+  }
+
+  toTitle() {
+    this.mission?.dispose?.();
+    this.mission = null;
+    this.resetWorld();
+    this.paused = false;
+    this.mode = 'title';
+    this.titleSetup();
+    this.ui.menus.title();
   }
 
   processEvents() {
@@ -264,6 +398,47 @@ export class Game {
     this.updateTrajectory(dt);
     this.mission?.visuals?.(dt, origin);
     this.interior?.visuals?.(dt, origin);
+  }
+
+  // Title screen: the Meridian turning slowly in front of Lethe.
+  titleSetup() {
+    const W = this.world;
+    this.sky.setSystem('lethe');
+    this.sky.setBlackHole(new Vector3(-0.35, 0.18, -1).normalize(), 26, 0.09);
+    W.setPrimary(PLANETS.skadi);
+    this.planetView.setPlanet(PLANETS.skadi);
+    const r = PLANETS.skadi.radius + 900e3;
+    W.meridian.body.pos.set(r, 0, 0);
+    W.meridian.body.vel.set(0, 0, -Math.sqrt(PLANETS.skadi.gm / r));
+    W.meridian.body.quat.setFromAxisAngle(new Vector3(0, 1, 0), 0.9);
+    W.meridian.body.updateDerived();
+    W.meridian.body.setAngularVelocity(W.meridian.axisWorld(new Vector3()).multiplyScalar(0.12));
+    W.kestrelActive = false;
+    this._titleT = 0;
+    this.cutscene = {
+      focus: 'station',
+      camera: (dt, origin, cam) => {
+        this._titleT += dt;
+        const t = this._titleT;
+        const S = W.meridian.body;
+        const sp = this.interpBodyPos(S, new Vector3()).sub(origin);
+        // Lethe sits behind the ring; the camera drifts slowly around it
+        const bh = this.sky.bhDir;
+        const side = new Vector3().crossVectors(bh, new Vector3(0, 1, 0)).normalize();
+        const a = Math.sin(t * 0.03) * 0.5 + 0.35;
+        const off = bh.clone().multiplyScalar(-Math.cos(a) * 125).addScaledVector(side, Math.sin(a) * 125).add(new Vector3(0, 18 + Math.sin(t * 0.05) * 6, 0));
+        cam.position.copy(sp).add(off);
+        cam.lookAt(sp.clone().addScaledVector(bh, 60).addScaledVector(side, -35));
+        if (cam.fov !== 50) { cam.fov = 50; cam.updateProjectionMatrix(); }
+      },
+    };
+  }
+
+  titleUpdate(dt) {
+    const W = this.world;
+    this.loop.advance(dt, 1, (h) => { W.meridian.body.savePrev(); W.meridian.body.integrate(h); });
+    this.renderAlpha = this.loop.alpha;
+    this.simDt = dt;
   }
 
   shadowFocus() {

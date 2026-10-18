@@ -66,7 +66,7 @@ export class PilotController {
         this.look.yaw = MathUtils.clamp(this.look.yaw - mouse.x * 0.003 * sens, -2.2, 2.2);
         this.look.pitch = MathUtils.clamp(this.look.pitch - mouse.y * 0.003 * sens, -1.2, 1.2);
       }
-    } else if (input.locked && !this.lockControls) {
+    } else if (input.locked && !this.lockControls && !this.game.mapOpen) {
       this.stick.x = MathUtils.clamp(this.stick.x - mouse.x * 0.0035 * sens, -1, 1);
       this.stick.y = MathUtils.clamp(this.stick.y - mouse.y * 0.0035 * sens * inv, -1, 1);
     }

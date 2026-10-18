@@ -241,13 +241,19 @@ export class DockingSystem {
     _qi.copy(S.quat).invert();
     r.pos.subVectors(pk, r.portWorld).applyQuaternion(_qi);
     r.range = r.pos.length();
-    // relative velocity of the Kestrel ring vs. the station material at that point
+    // relative velocity of the Kestrel ring w.r.t. the port centre (which sits
+    // on the spin axis), expressed in port axes ...
     K.velocityAt(pk, _a);
-    S.velocityAt(pk, _c);
+    S.velocityAt(r.portWorld, _c);
     r.vel.subVectors(_a, _c).applyQuaternion(_qi);
     r.closing = -r.vel.z;
     r.lateral = Math.hypot(r.pos.x, r.pos.y);
-    r.latVel = Math.hypot(r.vel.x, r.vel.y);
+    // ... and w.r.t. the station material the ring would actually touch,
+    // which adds the port surface's tangential velocity w x r off-axis.
+    S.velocityAt(pk, _c);
+    _c.subVectors(_a, _c).applyQuaternion(_qi);
+    r.latVel = Math.hypot(_c.x, _c.y);
+    r.corridorAngle = Math.atan2(r.lateral, Math.max(0.01, r.pos.z)) / DEG;
     // attitude error: Kestrel axes expressed in port axes
     _q.copy(_qi).multiply(K.quat);
     const f = _a.set(0, 0, -1).applyQuaternion(_q);

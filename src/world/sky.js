@@ -144,7 +144,7 @@ export class Sky {
       const m = Math.pow(rand(), 5.5);           // most stars faint, a few bright
       const T = 2800 + Math.pow(rand(), 1.6) * 11000;
       const [r, g, b] = blackbodyColor(T);
-      const lum = 0.05 + m * 5.0;
+      const lum = 0.045 + m * 1.7;
       col[i * 3] = r * lum; col[i * 3 + 1] = g * lum; col[i * 3 + 2] = b * lum;
       size1[i] = (1.1 + m * 3.6) * pxScale;
     }
