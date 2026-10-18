@@ -316,3 +316,38 @@ function buildCockpit(M) {
   group.add(cabinLight);
   return { group, screens, cabinLight };
 }
+
+// First-stage booster (in Kestrel body coordinates: it hangs below the tail).
+export function buildBoosterModel() {
+  const M = materials();
+  const root = new Group();
+  root.name = 'booster';
+  const b = new GeoBatch();
+  const white = new MeshStandardMaterial({ color: 0xe9e7e1, roughness: 0.55, metalness: 0.1 });
+  const r = 1.95;
+  b.cyl(r, r, 26, white, new Vector3(0, 0, 23.0), { x: Math.PI / 2, y: 0, z: 0 }, 40);
+  b.cyl(r * 0.92, r, 2.6, M.darkMetal, new Vector3(0, 0, 8.9), { x: Math.PI / 2, y: 0, z: 0 }, 40);   // interstage
+  b.cyl(r, r * 1.04, 1.4, M.darkMetal, new Vector3(0, 0, 36.6), { x: Math.PI / 2, y: 0, z: 0 }, 40);
+  for (const z of [12, 20, 28, 34]) b.add(new TorusGeometry(r + 0.01, 0.05, 6, 40), M.darkMetal, new Vector3(0, 0, z));
+  b.box(0.06, 2.2, 22, M.accent, new Vector3(r + 0.02, 0, 22));
+  // grid fins and legs
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    b.box(0.12, 1.4, 1.2, M.darkMetal, new Vector3(Math.cos(a) * (r + 0.6), Math.sin(a) * (r + 0.6), 11), { x: 0, y: 0, z: a });
+    b.box(0.2, 0.2, 6.0, M.darkMetal, new Vector3(Math.cos(a) * (r + 0.25), Math.sin(a) * (r + 0.25), 35), { x: Math.sin(a) * 0.15, y: -Math.cos(a) * 0.15, z: 0 });
+  }
+  const nozzle = nozzleGeometry(0.5, 1.5, 2.2);
+  b.add(nozzle, M.nozzle, new Vector3(0, 0, 37.3));
+  const label = labelTexture('MERIDIAN EXPEDITION  ·  HALDEN', { w: 1024, h: 96, bg: 'rgba(0,0,0,0)', fg: '#2a2c30', border: null, size: 64 });
+  const p = new Mesh(new PlaneGeometry(18, 1.7), new MeshBasicMaterial({ map: label, transparent: true, depthWrite: false }));
+  p.position.set(-r - 0.02, 0, 22); p.rotation.set(0, -Math.PI / 2, Math.PI / 2);
+  root.add(p);
+  const mesh = b.build();
+  root.add(mesh);
+  const plumeMat = new MeshBasicMaterial({ color: new Color(3.0, 2.0, 1.0), transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
+  const plume = new Mesh(new ConeGeometry(1.6, 26, 28, 1, true), plumeMat);
+  plume.rotation.x = -Math.PI / 2;
+  plume.position.z = 39.5 + 13;
+  root.add(plume);
+  return { root, plume, plumeMat };
+}

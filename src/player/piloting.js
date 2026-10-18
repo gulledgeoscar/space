@@ -23,7 +23,7 @@ const _m4 = new Matrix4();
 
 export const ATT_MODES = {
   Digit1: 'prograde', Digit2: 'retrograde', Digit3: 'normal', Digit4: 'antinormal',
-  Digit5: 'radial-out', Digit6: 'radial-in', Digit7: 'target', Digit8: 'anti-target', Digit9: 'port-align',
+  Digit5: 'radial-out', Digit6: 'radial-in', Digit7: 'target', Digit8: 'anti-target', Digit9: 'port-align', Digit0: 'burn',
 };
 
 export class PilotController {
@@ -76,6 +76,20 @@ export class PilotController {
     if (!look) { this.look.yaw *= Math.exp(-dt / 0.6); this.look.pitch *= Math.exp(-dt / 0.6); }
     if (mouse.wheel && this.camMode === 'chase') this.chase.dist = MathUtils.clamp(this.chase.dist * (1 + mouse.wheel * 0.12), 8, 4000);
 
+    // while hard-docked: unstrap into the ship, or release the latches
+    const D = this.world.docking;
+    if (D.state === 'hard' && this.game.mode === 'flight' && !this.game.cutscene) {
+      const m = this.game.mission;
+      const canExit = D.pressure >= 1 && m?.allowExit?.() !== false;
+      const canUndock = !!m?.allowUndock?.();
+      const parts = [];
+      if (canExit) parts.push('E unstrap & float to the hatch');
+      if (canUndock) parts.push('U release latches');
+      this.game.ui.prompt(parts.length ? 'E/U' : null, parts.join('  ·  '));
+      if (canExit && input.hit('KeyE')) { this.game.ui.prompt(null); this.game.enterInterior('seat', { blend: true }); return; }
+      if (canUndock && input.hit('KeyU')) { D.release(); m.onUndockStart?.(); }
+    } else if (this.game.mode === 'flight' && this._dockPrompt) this.game.ui.prompt(null);
+    this._dockPrompt = D.state === 'hard';
     if (this.lockControls) return;
     if (input.hit('KeyT')) {
       K.rcsMode = K.rcsMode === 'fine' ? 'coarse' : 'fine';
@@ -122,7 +136,7 @@ export class PilotController {
     const cmd = K.cmd;
     if (!this.enabled || this.lockControls || K.body.frozen) {
       cmd.t.set(0, 0, 0); cmd.r.set(0, 0, 0);
-      if (!this.enabled || this.lockControls) cmd.throttle = 0;
+      if (!this.enabled) cmd.throttle = 0;
       return;
     }
     // translation (body axes; forward = -Z)
@@ -287,8 +301,8 @@ export class PilotController {
       const frameQ = this.chaseFrame(kQuat, dt);
       off.applyQuaternion(frameQ);
       const up = new Vector3(0, 1, 0).applyQuaternion(frameQ);
-      _m4.lookAt(off, new Vector3(), up);
-      quat.setFromRotationMatrix(_m4);
+      const m4 = new Matrix4().lookAt(off, new Vector3(), up);
+      quat.setFromRotationMatrix(m4);
     }
     if (this.transition) {
       this.transition.t += dt;
@@ -309,10 +323,23 @@ export class PilotController {
   // Chase camera reference frame: follows the Kestrel's heading but, near
   // the spinning Meridian, rolls with the station so the port looks still.
   chaseFrame(kQuat, dt) {
-    if (!this._frame) this._frame = kQuat.clone();
     const W = this.world;
     let target = kQuat;
+    const K = W.kestrel.body;
+    const alt = K.pos.length() - W.primary.radius;
     if (W.meridianActive && W.docking.rel.range < 400) target = this.game.interpBodyQuat(W.meridian.body, new Quaternion());
+    else if (alt < 90000) {
+      // low over a planet: keep the horizon level (camera up = local vertical)
+      const up = K.pos.clone().normalize();
+      const nose = new Vector3(0, 0, -1).applyQuaternion(kQuat);
+      let f = nose.clone().addScaledVector(up, -nose.dot(up));
+      if (f.lengthSq() < 0.09) { const top = new Vector3(0, 1, 0).applyQuaternion(kQuat); f = top.addScaledVector(up, -top.dot(up)); }
+      f.normalize();
+      const back = f.negate();
+      const right = new Vector3().crossVectors(up, back).normalize();
+      target = new Quaternion().setFromRotationMatrix(_m4.makeBasis(right, up, back));
+    }
+    if (!this._frame) this._frame = target.clone();
     this._frame.slerp(target, 1 - Math.exp(-dt * 2.5));
     return this._frame;
   }

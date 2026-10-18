@@ -116,7 +116,7 @@ export class Kestrel {
     this.dvUsed = 0;              // integral of |thrust accel| dt
     this.events = [];             // { type, value } consumed by game
     this.attached = null;         // when docked: { to, relQuat, relPos }
-    this.rcsHeat = 0;             // hottest jet [K]
+    this.rcsHeat = 290;           // hottest jet [K]
     this.lastGLoad = new Vector3();
     this.pilotAccel = new Vector3();
   }
@@ -164,7 +164,15 @@ export class Kestrel {
     this.body.setFromMassModel(this.mass);
   }
 
-  deltaVMain() { return deltaV(KESTREL.main.ispVac, this.body.mass, this.body.mass - this.fuel); }
+  // Stage-aware delta-v: with the booster attached, stage 1 (booster
+  // propellant pushing the whole stack) plus stage 2 (Kestrel alone).
+  deltaVMain() {
+    const m2 = this.dryMass + this.fuel;
+    const dv2 = deltaV(KESTREL.main.ispVac, m2, this.dryMass);
+    if (!this.booster) return dv2;
+    const m0 = this.body.mass;
+    return dv2 + deltaV((BOOSTER.ispSL + BOOSTER.ispVac) / 2, m0, m0 - this.boosterTank.mass);
+  }
   deltaVRcs() { return deltaV(KESTREL.rcs.isp, this.body.mass, this.body.mass - this.fuel); }
 
   rcsThrust() { return this.rcsMode === 'coarse' ? KESTREL.rcs.coarse : KESTREL.rcs.fine; }

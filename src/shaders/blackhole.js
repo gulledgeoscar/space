@@ -66,22 +66,26 @@ export const SkyShader = {
       return pow(c, vec3(2.2));
     }
 
+    // Single-scattering sky from inside an atmosphere. tau = zenith Rayleigh
+    // optical depth (scaled by local density), airmass ~ 1/(mu + 0.15).
     vec3 skyAtmo(vec3 rd, vec3 base) {
       if (uAtmo <= 0.001) return base;
       float mu = dot(rd, uUp);
       float sunMu = dot(uSunDir, uUp);
-      float depth = 1.0 / max(mu + 0.14, 0.035);
-      vec3 betaR = vec3(0.12, 0.28, 0.62) * uAtmoColor * 1.8;
-      vec3 sunAtten = exp(-betaR * 3.0 / max(sunMu + 0.18, 0.04));
+      vec3 tau = vec3(0.045, 0.105, 0.245) * (0.6 + 0.8 * uAtmoColor) * uAtmo;
+      float amView = 1.0 / max(mu + 0.15, 0.08);
+      float amSun = 1.0 / max(sunMu + 0.15, 0.06);
+      vec3 sunT = exp(-tau * amSun * 0.6);
       float cosA = dot(rd, uSunDir);
       float phaseR = 0.75 * (1.0 + cosA * cosA);
-      float phaseM = 0.08 / pow(1.0001 - 0.92 * cosA, 1.5);
-      vec3 scatter = (1.0 - exp(-betaR * depth * uAtmo)) * (phaseR + phaseM) * sunAtten;
-      float day = smoothstep(-0.18, 0.08, sunMu);
-      vec3 sky = scatter * uSunColor * 2.2 * (0.08 + day);
-      // horizon haze
-      sky += uAtmoColor * 0.05 * uAtmo * smoothstep(0.4, 0.0, abs(mu)) * day;
-      float hide = clamp(dot(sky, vec3(0.33)) * 3.0 * uAtmo, 0.0, 1.0);
+      float phaseM = 0.06 / pow(1.0001 - 0.9 * cosA, 1.5);
+      vec3 rayleigh = (1.0 - exp(-tau * amView)) * phaseR;
+      vec3 mie = vec3(1.0 - exp(-0.05 * uAtmo * amView)) * phaseM;
+      float day = smoothstep(-0.2, 0.06, sunMu);
+      vec3 sky = (rayleigh * 3.4 + mie * 1.1) * sunT * uSunColor * (0.02 + day);
+      // below the horizon: haze toward the ground colour
+      sky = mix(sky, sky * 0.6 + vec3(0.02) * day, smoothstep(0.0, -0.15, mu));
+      float hide = clamp(dot(sky, vec3(0.33)) * 4.0, 0.0, 1.0);
       vec3 col = base * (1.0 - hide) + sky;
       if (uFog > 0.0) col = mix(col, uFogColor, uFog * smoothstep(0.55, -0.05, mu));
       return col;

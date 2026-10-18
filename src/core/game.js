@@ -299,13 +299,15 @@ export class Game {
     this.extraMeshes = [];
   }
 
-  startMission(id, stage = null, restore = null) {
+  startMission(id, stage = null, restore = null, opts = {}) {
     this.mission?.dispose?.();
-    this.resetWorld();
+    if (!opts.keepWorld) this.resetWorld();
+    else { this.ui.menus.clear(); this.ui.hud.cues.clear(); this.ui.hud.phaseText = null; this.ui.hud.phaseSub = null; this.mapNode = null; }
     this.ui.menus.clear();
     this.paused = false;
     const Cls = MISSION_CLASSES[id];
     this.mission = new Cls(this, stage);
+    this.mission.keepWorld = !!opts.keepWorld;
     this.mission.start();
     if (restore) {
       this.world.restore(restore.world, PLANETS);
@@ -664,7 +666,7 @@ export class Game {
     if (this.surface?.fog) { env.fog = this.surface.fog; env.fogColor = this.surface.fogColor; }
     if (this.surface) env.hideSurface = this.surface.hideFarSurface ? this.surface.hideFarSurface(alt) : 0;
     // ambient light from the sky when inside an atmosphere
-    this.hemi.intensity = 0.05 + atmo * 1.2;
+    this.hemi.intensity = 0.05 + atmo * 0.45;
     return env;
   }
 }

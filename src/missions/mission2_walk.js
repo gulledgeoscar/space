@@ -31,8 +31,10 @@ export class WalkMission extends Mission {
   static id = 2;
   start() {
     const g = this.game;
-    setupDocked(g, EARTH, 400e3, { theta: 0.8 });
-    g.enterInterior(this.stage === 'hub' ? 'hub' : 'seat');
+    if (!this.keepWorld) {
+      setupDocked(g, EARTH, 400e3, { theta: 0.8 });
+      g.enterInterior(this.stage === 'hub' ? 'hub' : 'seat');
+    }
     this.okafor = placeCrew(g, 'okafor', 10.6, 0.05, 2.1, 1, 'sit');
     this.briefingText = ['MERIDIAN EXPEDITION ONE', 'Transit: the Aperture, 22 months', 'Target: LETHE · 1e9 M☉ · spin 1 − 10⁻¹⁴', `PELAGIA · ocean · 1.3 g · dt/dτ ${ORBITS.pelagia.factor.toFixed(0)}`, 'SKADI · ice · 0.85 g · Vance beacon', '1 hour on Pelagia = 7 years at home'];
     this.objectives('WALK THE SHIP', 'Hub → Spoke A → ring → bridge, and back', [
@@ -44,6 +46,7 @@ export class WalkMission extends Mission {
     ]);
     this.reachStage('hub');
     this.phase = 'start';
+    if (this.keepWorld && this.game.interiorPlayer.area === 'hub') { this.phase = 'hub'; this.complete('hatch'); }
     this.on('player:area', (a) => this.onArea(a));
     this.on('player:ladder', () => { if (!this.ladderTold) { this.ladderTold = true; this.say('case', 'Thirty-two metres of ladder. Gravity grows linearly with radius: zero up here, one g at the bottom.'); } });
     this.on('interact:bridgeConsole', () => this.briefing());
