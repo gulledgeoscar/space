@@ -108,6 +108,7 @@ export class SpinDockMission extends Mission {
   }
 
   allowExit() { return false; }
+  controlsNote() { return 'Line up on the station\'s spin axis, then roll with <kbd>Q</kbd> <kbd>E</kbd> until SPIN MATCH reads 100%' + (settings.difficulty.helpers ? ' (<kbd>K</kbd> does it for you inside 250 m)' : '') + '. Then close in slowly with <kbd>W</kbd>.'; }
   allowUndock() { return false; }
   warpLimit() {
     if (this.phase === 'despin') return 50;

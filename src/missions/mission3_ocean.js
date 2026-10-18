@@ -62,6 +62,9 @@ export class OceanMission extends Mission {
   }
 
   allowExit() { return this.phase === 'docked' || this.phase === 'walkback'; }
+  allowBoard() { return this.phase === 'walk'; }
+  controlsNote() { return this.phase === 'walk' ? 'Walk to the Kestrel: follow the yellow ◆ marker — ladder, hub, hatch, pilot seat. <kbd>E</kbd> at each one.' : null; }
+  interiorTarget() { return this.phase === 'walk' ? 'kestrel' : this.phase === 'walkback' ? 'bridge' : null; }
   allowUndock() { return this.phase === 'cockpit'; }
   onUndockStart() { this.phase = 'releasing'; }
   warpLimit() { return this.phase === 'surface' ? 1 : 50; }

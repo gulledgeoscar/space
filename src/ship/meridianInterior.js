@@ -578,6 +578,15 @@ export class MeridianInterior {
       b.b.addMatrix(new CylinderGeometry(0.03, 0.03, len, 6), M.cable, m);
     }
     this.fixtures.push({ pos: r.clone().multiplyScalar(26), color: 0xfff0dc, i: 0.8 }, { pos: r.clone().multiplyScalar(12), color: 0xfff0dc, i: 0.8 });
+    // flanges where the round tube meets the square cut-outs in the hub wall
+    // and the airlock ceiling (otherwise the corners open onto space)
+    const flangeMat = new MeshStandardMaterial({ color: 0x4a4f56, roughness: 0.7, metalness: 0.3, side: DoubleSide });
+    for (const [rho, outer] of [[HUB_R + 0.03, 3.4], [RING_CEIL_R + 0.03, 2.4]]) {
+      const fl = new Mesh(new RingGeometry(SPOKE_R - 0.02, outer, 40), flangeMat);
+      fl.position.copy(r).multiplyScalar(rho);
+      fl.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), r);
+      this.group.add(fl);
+    }
     this.group.add(b.build());
   }
 
@@ -600,14 +609,19 @@ export class MeridianInterior {
     for (let k = 0; k < 8; k++) ub.push((k / 8) * Math.PI * 2 - 0.19, (k / 8) * Math.PI * 2 + 0.19);
     const cyl = surf((u, v, o) => o.set(Math.cos(u) * HUB_R, Math.sin(u) * HUB_R, v), 0, Math.PI * 2, Math.PI / 24, HUB_Z0, HUB_Z1, 1.0, { flip: false, hole: holes, ub: ub.map((x) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)), vb: [-SPOKE_R, SPOKE_R, ...winZ], uvs: 0.4 });
     b.raw(cyl, M.panel);
-    // window glass
+    // window glass + frames (so they read as windows, not holes)
+    const hubGlass = new MeshStandardMaterial({ color: 0x40607a, roughness: 0.04, metalness: 0.6, transparent: true, opacity: 0.32, depthWrite: false, side: DoubleSide });
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
-      b.raw(surf((u, v, o) => o.set(Math.cos(u) * (HUB_R + 0.05), Math.sin(u) * (HUB_R + 0.05), v), a - 0.19, a + 0.19, 0.1, winZ[0], winZ[1], 1, {}), M.glass);
+      b.raw(surf((u, v, o) => o.set(Math.cos(u) * (HUB_R + 0.04), Math.sin(u) * (HUB_R + 0.04), v), a - 0.24, a + 0.24, 0.08, winZ[0] - 0.12, winZ[1] + 0.12, 1, {}), hubGlass);
+      for (const z of winZ) b.raw(new TorusGeometry(HUB_R - 0.03, 0.045, 6, 12, 0.4).rotateZ(a - 0.2).translate(0, 0, z), M.darkMetal);
+      for (const ea of [a - 0.195, a + 0.195]) {
+        b.b.addMatrix(new CylinderGeometry(0.045, 0.045, winZ[1] - winZ[0] + 0.09, 8), M.darkMetal, new Matrix4().compose(new Vector3(Math.cos(ea) * (HUB_R - 0.03), Math.sin(ea) * (HUB_R - 0.03), (winZ[0] + winZ[1]) / 2), new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2), new Vector3(1, 1, 1)));
+      }
     }
     // end caps: aft (sealed hatch) and forward with the docking hatch opening
-    const capAft = surf((u, v, o) => o.set(Math.cos(v) * u, Math.sin(v) * u, HUB_Z0), 0.01, HUB_R, 0.6, 0, Math.PI * 2, Math.PI / 16, { flip: true });
-    const capFwd = surf((u, v, o) => o.set(Math.cos(v) * u, Math.sin(v) * u, HUB_Z1), 0.56, HUB_R, 0.6, 0, Math.PI * 2, Math.PI / 16, { flip: false });
+    const capAft = surf((u, v, o) => o.set(Math.cos(v) * u, Math.sin(v) * u, HUB_Z0), 0.01, HUB_R + 0.1, 0.6, 0, Math.PI * 2, Math.PI / 16, { flip: true });
+    const capFwd = surf((u, v, o) => o.set(Math.cos(v) * u, Math.sin(v) * u, HUB_Z1), 0.5, HUB_R + 0.1, 0.6, 0, Math.PI * 2, Math.PI / 16, { flip: false });
     b.raw(capAft, M.panelDark);
     b.raw(capFwd, M.panelDark);
     b.raw(new TorusGeometry(0.56, 0.06, 8, 32).translate(0, 0, HUB_Z1 - 0.02), M.hazard);
@@ -645,9 +659,16 @@ export class MeridianInterior {
     const s = new Mesh(new PlaneGeometry(1.6, 0.4), new MeshBasicMaterial({ map: labelTexture(['HUB · 0 g', 'PORT A → KESTREL   ·   SPOKE A → RING'], { w: 1024, h: 256, size: 90 }), color: new Color(1.3, 1.3, 1.3), side: DoubleSide }));
     s.position.set(0, 1.6, HUB_Z1 - 0.06); s.rotation.y = Math.PI;
     this.group.add(s);
-    this.fixtures.push({ pos: new Vector3(0, 0, -2.5), color: 0xe8f0ff, i: 1.2 }, { pos: new Vector3(0, 0, 3.0), color: 0xe8f0ff, i: 1.0 });
+    this.fixtures.push({ pos: new Vector3(0, 0, -2.5), color: 0xe8f0ff, i: 0.7 }, { pos: new Vector3(0, 0, 3.0), color: 0xe8f0ff, i: 0.6 });
     // interactables
-    this.interact('board', 0, 0, 0, 'Take the pilot seat', () => this.game.emit('interact:board'), { posStation: new Vector3(0, 0.6, 12.25 - 4.45), radius: 1.0, enabled: () => this.space.kestrelDocked });
+    // transits: hatches and the top of the ladder are guided glides (E)
+    const ip = () => this.game.interiorPlayer;
+    const area = () => ip().area;
+    const canBoard = () => this.game.mission?.allowBoard?.() !== false;
+    this.seatInteract = this.interact('board', 0, 0, 0, 'Take the pilot seat', () => this.game.emit('interact:board'), { posStation: new Vector3(0, 0.6, 12.25 - 4.45), radius: 1.1, enabled: () => this.space.kestrelDocked && ip().hatchesOpen() && area() === 'kestrel' && canBoard() });
+    this.hatchOut = this.interact('hatchOut', 0, 0, 0, 'Go through the hatch into the Meridian', () => ip().transit('toHub'), { posStation: new Vector3(0, -0.12, 12.25 - 5.84), radius: 2.4, enabled: () => ip().hatchesOpen() && area() === 'kestrel' && ip().mode === 'float' });
+    this.hatchIn = this.interact('hatchIn', 0, 0, 0, 'Go through the hatch into the Kestrel', () => ip().transit('toCabin'), { posStation: new Vector3(0, 0, 4.0), radius: 1.5, enabled: () => ip().hatchesOpen() && area() === 'hub' });
+    this.interact('spokeDown', 0, 0, 0, 'Climb down Spoke A', () => ip().transit('toLadder'), { posStation: sA.clone().multiplyScalar(HUB_R - 1.0), radius: 1.8, enabled: () => area() === 'hub' && ip().mode === 'float' });
     this.interact('hubLog', 0, 0, 0, 'Hub status panel', () => this.game.emit('interact:hubLog'), { posStation: new Vector3(0, -2.9, 1.2), radius: 1.5 });
   }
 

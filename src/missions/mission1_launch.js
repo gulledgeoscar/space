@@ -54,6 +54,13 @@ export class LaunchMission extends Mission {
   }
 
   allowExit() { return this.phaseName === 'docked'; }
+  allowBoard() { return false; }
+  controlsNote() {
+    const st = this.stage || 'launch';
+    if (st === 'launch') return 'On the pad, press <kbd>Space</kbd> to flip each switch on the startup panel. During the climb, <kbd>Space</kbd> drops the booster when CASE-9 calls it.';
+    return 'Follow CASE-9 and the markers. Near the station, <kbd>K</kbd> stops you rotating and <kbd>L</kbd> stops you drifting — then nudge in with <kbd>W</kbd>.';
+  }
+  interiorTarget() { return this.phaseName === 'docked' ? 'hub' : null; }
   allowUndock() { return false; }
 
   // ---------------------------------------------------------------------------
@@ -169,6 +176,8 @@ export class LaunchMission extends Mission {
     const info = K.separateBooster();
     if (!info) return;
     this.stageReady = false;
+    // the stack is gone: pull the chase view in to the Kestrel
+    g.pilot.chase.dist = 22; g.pilot.chase.yaw = 0.35;
     // the spent stage becomes its own rigid body
     const body = new RigidBody('booster');
     body.setMassProperties(info.mass, new Vector3(...BOOSTER.pos), Inertia.cylinderZ(info.mass, 1.95, 30));

@@ -1,5 +1,6 @@
 // MERIDIAN - entry point.
 import { Game } from './core/game.js';
+import { Raycaster, Vector2, Vector3 } from 'three';
 import * as scenario from './missions/scenario.js';
 
 const canvas = document.getElementById('view');
@@ -12,7 +13,7 @@ try {
   throw e;
 }
 window.meridian = game;
-window.meridianDev = scenario;
+window.meridianDev = { ...scenario, THREE: { Raycaster, Vector2, Vector3 } };   // console/test helpers
 const params = new URLSearchParams(location.search);
 if (params.get('mission')) game.startMission(Number(params.get('mission')), params.get('stage'));
 else game.toTitle();

@@ -1,22 +1,35 @@
 // The player aboard the Meridian, simulated in the station's rotating frame:
 // walking (centrifugal "gravity" + Coriolis), climbing the spoke ladder
 // (gravity fading linearly with radius, Coriolis pressing you into or
-// pulling you off the rungs), and free floating in the hub.
+// pulling you off the rungs), and floating in the hub and the docked
+// Kestrel with a stabilised suit pack. Hatches and the ladder top are
+// "transits": E starts a short guided glide through the tight bits.
+//
+// Camera rules: first person whenever floating, climbing or gliding (the
+// cabin, tunnel and spoke are too tight for anything else); over the
+// shoulder when walking, pulled in by a sphere-cast against the same
+// collision volume the player uses, so it can never leave the hull.
 
-import { Vector3, Quaternion, Matrix4, Vector2, Mesh, CylinderGeometry, MeshStandardMaterial } from 'three';
+import { Vector3, Quaternion, Matrix4, Vector2, Mesh, CylinderGeometry, MeshStandardMaterial, CatmullRomCurve3 } from 'three';
 import { Walker } from './onFoot.js';
 import { Floater } from './zeroG.js';
 import { buildAstronaut } from './astronaut.js';
 import { MeridianInterior } from '../ship/meridianInterior.js';
-import { SPOKE_THETA, LADDER_OFF, R, L, toStation, fromStation, ROOMS, SPOKE_S } from '../ship/interiorLayout.js';
+import {
+  SPOKE_THETA, LADDER_OFF, R, toStation, fromStation, ROOMS, SPOKE_S, kestrelToStation, kestrelUp, KESTREL_HATCH,
+} from '../ship/interiorLayout.js';
+import { nextWaypoint } from './interiorRoute.js';
 import { centrifugal, coriolis } from '../physics/rotatingFrame.js';
-import { G0, HUB_R, RING_CEIL_R, KESTREL_DOCKED_Z } from '../physics/constants.js';
+import { G0, HUB_R } from '../physics/constants.js';
 import { settings } from '../core/settings.js';
 
 const _v = new Vector3();
 const _w = new Vector3();
 const _q = new Quaternion();
 const _m = new Matrix4();
+
+const EYE_H = 1.62;          // walking eye height above the feet
+const LADDER_EYE = 1.63;     // eye above the feet on the ladder (radially inward)
 
 export class InteriorPlayer {
   constructor(game) {
@@ -29,7 +42,7 @@ export class InteriorPlayer {
     this.flashlight = false;
     this.camLocal = new Vector3();
     this.camLocalQuat = new Quaternion();
-    this.ladder = { rho: 30, rate: 0, push: 0 };
+    this.ladder = { rho: 30, rate: 0, coriolis: 0, g: 0 };
     this.bolts = [];
     this.area = '';
     this.enabled = true;
@@ -40,6 +53,11 @@ export class InteriorPlayer {
     this.camTransition = null;
     this.mouse = { x: 0, y: 0 };
     this.headPitch = 0;
+    this.ladderYaw = 0;
+    this.camDist = 2.0;
+    this.autoFP = false;
+    this.glide = null;
+    this.waypoint = null;
   }
 
   ensureBuilt() {
@@ -48,13 +66,13 @@ export class InteriorPlayer {
     this.game.meridianModel.root.add(this.interior.group);
     this.model = buildAstronaut();
     this.interior.group.add(this.model.root);
-    const boltMat = new MeshStandardMaterial({ color: 0xb8b8b0, metalness: 0.9, roughness: 0.3 });
     this.boltGeo = new CylinderGeometry(0.02, 0.02, 0.07, 8);
-    this.boltMat = boltMat;
+    this.boltMat = new MeshStandardMaterial({ color: 0xb8b8b0, metalness: 0.9, roughness: 0.3 });
     this.game.interior = this;
   }
 
   get space() { return this.interior.space; }
+  get roll() { return this.interior.space.kestrelRoll || 0; }
 
   makeEnv() {
     const self = this;
@@ -75,12 +93,38 @@ export class InteriorPlayer {
     };
   }
 
+  // ---- geometry helpers -------------------------------------------------------
+  spokeRadial() { return new Vector3(Math.cos(SPOKE_THETA), Math.sin(SPOKE_THETA), 0); }
+  ladderRadial() { return this.spokeRadial(); }
+  ladderTangent() { return new Vector3(-Math.sin(SPOKE_THETA), Math.cos(SPOKE_THETA), 0); }
+  hubUp() { return this.spokeRadial().negate(); }              // Spoke A is "down" in the hub
+  hatchPos() { return kestrelToStation(KESTREL_HATCH.x, KESTREL_HATCH.y, KESTREL_HATCH.z, this.roll); }
+  hatchesOpen() {
+    const g = this.game, D = g.world.docking;
+    return this.interior.space.kestrelDocked && D.state === 'hard' && D.pressure >= 1 && g.hatchOpen;
+  }
+  // cabin interaction points follow the docked Kestrel's roll index
+  syncKestrelInteracts() {
+    const it = this.interior, roll = this.roll;
+    kestrelToStation(0, 0.6, -4.45, roll, it.seatInteract.pos);
+    kestrelToStation(KESTREL_HATCH.x, KESTREL_HATCH.y, KESTREL_HATCH.z, roll, it.hatchOut.pos);
+  }
+  // which way is "up" for a floating player at p
+  refUpAt(p) {
+    const a = this.interior.space.area(p);
+    if (a === 'kestrel' && p.z > 5.6) return kestrelUp(this.roll);
+    if (a === 'kestrel') return new Vector3(0, 0, 0).add(kestrelUp(this.roll)).lerp(this.hubUp(), Math.min(1, Math.max(0, (5.6 - p.z) / 1.2))).normalize();
+    return this.hubUp();
+  }
+
   // ---- entering -------------------------------------------------------------
   spawn(where, opts = {}) {
     this.ensureBuilt();
     const W = this.walker, F = this.floater;
     this.interior.space.kestrelDocked = this.game.world.docking.state === 'hard';
     this.interior.space.kestrelRoll = this.game.world.docking.capturedRoll || 0;
+    this.syncKestrelInteracts();
+    this.glide = null;
     if (where === 'bridge' || where === 'bridgeConsole' || where === 'airlock' || where === 'ring') {
       const s = where === 'bridge' ? 9.0 : where === 'bridgeConsole' ? 15.6 : where === 'airlock' ? SPOKE_S - 2.5 : opts.s ?? 30;
       toStation(s, 0.02, opts.z ?? 0, W.pos);
@@ -88,24 +132,73 @@ export class InteriorPlayer {
       const t = new Vector3(-Math.sin(s / R), Math.cos(s / R), 0);
       W.forward.copy(t).multiplyScalar(opts.facing ?? 1);
       W.up.set(-Math.cos(s / R), -Math.sin(s / R), 0);
+      W.pitch = 0;
       this.mode = 'walk';
     } else if (where === 'hub') {
-      F.pos.set(0, -1.2, 0);
+      F.pos.set(0, 0, 2.0);
       F.vel.set(0, 0, 0);
-      F.quat.setFromUnitVectors(new Vector3(0, 0, -1), new Vector3(Math.cos(SPOKE_THETA), Math.sin(SPOKE_THETA), 0).negate());
+      F.lookAlong(this.spokeRadial().multiplyScalar(HUB_R).sub(F.pos), this.hubUp());
       this.mode = 'float';
     } else if (where === 'seat') {
-      // floating just behind the pilot seat in the docked Kestrel
-      const roll = this.interior.space.kestrelRoll;
-      const p = new Vector3(0, 0.3, -3.7).applyAxisAngle(new Vector3(0, 0, 1), roll);
-      F.pos.set(p.x, p.y, p.z + KESTREL_DOCKED_Z);
-      F.vel.set(0, 0, -0.05);
-      F.quat.setFromAxisAngle(new Vector3(0, 0, 1), roll);
+      // unstrapped, floating beside the pilot seat, facing the nose hatch
+      const roll = this.roll;
+      kestrelToStation(0.72, 0.45, -4.4, roll, F.pos);
+      F.vel.set(0, 0, 0);
+      F.lookAlong(this.hatchPos().sub(F.pos), kestrelUp(roll));
       this.mode = 'float';
     }
-    this.camTransition = opts.fromCamera ? { t: 0, dur: 1.2, from: opts.fromCamera } : null;
+    this.camDist = 1.0;
+    this.camTransition = opts.fromCamera ? { t: 0, dur: 1.0, from: opts.fromCamera } : null;
     this.enabled = true;
     this.area = '';
+  }
+
+  // ---- transits (guided glides through hatches / onto the ladder) ------------
+  transit(kind) {
+    const F = this.floater, roll = this.roll;
+    const K = (x, y, z) => kestrelToStation(x, y, z, roll);
+    const start = this.playerPos(new Vector3());
+    const r = this.spokeRadial(), t = this.ladderTangent();
+    let pts, dur, end;
+    if (kind === 'toHub') {
+      pts = [start, K(0, 0.0, -5.15), K(0, -0.1, -5.9), K(0, -0.04, -6.7), new Vector3(0, 0, 4.9), new Vector3(0, 0, 3.2), new Vector3(0, -0.4, 1.4)];
+      dur = 4.2;
+      end = () => { this.toFloatAt(pts[pts.length - 1], r.clone().multiplyScalar(HUB_R).sub(pts[pts.length - 1]), this.hubUp()); };
+      this.game.audio?.hiss(0.6, 0.08);
+    } else if (kind === 'toCabin') {
+      pts = [start, new Vector3(0, 0, 3.4), new Vector3(0, 0, 4.9), K(0, -0.04, -6.7), K(0, -0.1, -5.9), K(0, 0.05, -5.15), K(0.72, 0.45, -4.4)];
+      dur = 4.2;
+      end = () => { const p = pts[pts.length - 1]; this.toFloatAt(p, K(-0.3, 0.6, -5.6).sub(p), kestrelUp(roll)); };
+      this.game.audio?.hiss(0.6, 0.08);
+    } else if (kind === 'toLadder') {
+      const rho0 = HUB_R + 1.0;
+      const eye = r.clone().multiplyScalar(rho0 - LADDER_EYE).addScaledVector(t, LADDER_OFF - 0.42);
+      pts = [start, r.clone().multiplyScalar(HUB_R - 1.6).addScaledVector(t, 0.2), eye];
+      dur = 2.4;
+      end = () => { this.toLadder(rho0); this.headPitch = -0.85; };
+    } else return;
+    this.glide = { curve: new CatmullRomCurve3(pts), t: 0, dur, end, kind, look0: F.forward(), up0: this.camUp ? this.camUp.clone() : this.refUpAt(start) };
+    this.mode = 'glide';
+    this.game.ui.prompt(null);
+    this.game.emit('player:transit', kind);
+  }
+
+  stepGlide(dt) {
+    const G = this.glide;
+    G.t += dt;
+    if (G.t >= G.dur) { this.glide = null; G.end(); return; }
+  }
+
+  glidePose() {
+    const G = this.glide;
+    const e = Math.min(1, G.t / G.dur);
+    const k = e * e * (3 - 2 * e);
+    const pos = G.curve.getPointAt(k);
+    const tan = G.curve.getTangentAt(Math.min(0.999, k + 0.04));
+    const up = this.refUpAt(pos);
+    // look along the path, easing in from where you were looking
+    const fwd = G.look0.clone().lerp(tan, Math.min(1, e * 3)).normalize();
+    return { pos, fwd, up };
   }
 
   // ---- per frame --------------------------------------------------------------
@@ -117,8 +210,7 @@ export class InteriorPlayer {
     this.mouse.y += m.y * 0.0022 * sens * (settings.get('invertY') ? -1 : 1);
     if (input.hit('KeyV')) this.firstPerson = !this.firstPerson;
     if (input.hit('KeyF')) this.toggleFlashlight();
-    if (input.hit('KeyB')) this.dropBolt();
-    // interactions
+    if (input.hit('KeyB') && this.mode !== 'glide') this.dropBolt();
     this.updateInteract(input);
   }
 
@@ -133,32 +225,35 @@ export class InteriorPlayer {
     this.mouse.x = 0; this.mouse.y = 0;
     const moveVec = new Vector2(input.axis('KeyA', 'KeyD'), input.axis('KeyS', 'KeyW'));
     if (moveVec.lengthSq() > 1) moveVec.normalize();
-    if (this.mode === 'walk') {
+    this.interior.space.kestrelDocked = this.game.world.docking.state === 'hard';
+    if (this.mode === 'glide') {
+      this.stepGlide(dt);
+    } else if (this.mode === 'walk') {
       const W = this.walker;
       W.pitch = Math.max(-1.45, Math.min(1.45, W.pitch + pitch));
-      W.step(dt, this.env, { move: moveVec, run: input.key('ShiftLeft'), jump: input.hit('Space'), yaw });
+      W.step(dt, this.env, { move: moveVec, run: input.key('ShiftLeft') || input.key('ShiftRight'), jump: input.hit('Space'), yaw });
       if (W.landed > 5.5) this.hardLanding(W.landed);
       if (W.grounded && W.speed > 0.3) {
         this.stepAcc += W.speed * dt;
         if (this.stepAcc > (W.running ? 1.1 : 0.75)) { this.stepAcc = 0; this.game.audio?.footstep('metal', Math.min(1.4, W.gEff / G0)); }
       }
       // weak gravity and airborne -> float
-      if (W.gEff < 1.0 && !W.grounded && W.airTime > 0.25) this.toFloat(W.pos.clone().addScaledVector(W.up, 0.95), W.vel.clone());
-      // mount the ladder by walking into it
+      if (W.gEff < 1.0 && !W.grounded && W.airTime > 0.25) this.toFloatAt(W.pos.clone().addScaledVector(W.up, 0.95), W.forward.clone(), W.up.clone(), W.vel.clone());
+      // walk into the ladder to grab it
       if (this.nearLadder(W.pos.clone().addScaledVector(W.up, 0.95)) < 0.75 && moveVec.y > 0 && W.forward.dot(this.ladderTangent()) > 0.6) this.toLadder();
     } else if (this.mode === 'float') {
       const F = this.floater;
-      // suit pack: WASD planar, Space up (or push off when touching), Ctrl/C down
-      const thrust = new Vector3(input.axis('KeyA', 'KeyD'), (input.key('Space') && !F.touching ? 1 : 0) - (input.key('ControlLeft') || input.key('KeyC') ? 1 : 0), input.axis('KeyW', 'KeyS'));
-      const grab = input.key('KeyE') && !this.focusInteract;
-      F.step(dt, this.env, { look: { x: -yaw, y: -pitch }, roll: input.axis('KeyE', 'KeyQ') * (grab ? 0 : 1), thrust: grab ? null : thrust, grab, railMove: grab ? moveVec.y : 0, push: input.hit('Space') && F.touching }, this.interior.rails);
+      const move = new Vector3(moveVec.x, (input.key('Space') ? 1 : 0) - (input.key('ControlLeft') || input.key('KeyC') ? 1 : 0), moveVec.y);
+      F.step(dt, this.env, { yaw, pitch, move, boost: input.key('ShiftLeft') || input.key('ShiftRight'), refUp: this.refUpAt(F.pos) });
       if (F.lastImpact > 4) this.hardLanding(F.lastImpact);
       else if (F.lastImpact > 0.6) this.game.audio?.clunk(Math.min(0.6, F.lastImpact * 0.3), 1.4);
+      // floating down into Spoke A: grab the ladder
+      const rho = Math.hypot(F.pos.x, F.pos.y);
+      if (this.interior.space.area(F.pos) === 'spoke' && rho > HUB_R + 0.5 && rho < R - 3) this.toLadder(Math.max(HUB_R + 1.0, rho + 0.95));
       // enough gravity and a floor under the feet -> walk
       this.env.gravity(F.pos, _v);
       const g = _v.length();
       if (g > 1.6 && F.touching && F.contactNormal && F.contactNormal.dot(_v.clone().normalize().negate()) > 0.7) this.toWalk();
-      if (this.nearLadder(F.pos) < 0.8 && input.hit('KeyE')) this.toLadder();
     } else if (this.mode === 'ladder') {
       this.stepLadder(dt, input, yaw, pitch);
     }
@@ -166,8 +261,6 @@ export class InteriorPlayer {
   }
 
   // ---- ladder -----------------------------------------------------------------
-  ladderRadial() { return new Vector3(Math.cos(SPOKE_THETA), Math.sin(SPOKE_THETA), 0); }
-  ladderTangent() { return new Vector3(-Math.sin(SPOKE_THETA), Math.cos(SPOKE_THETA), 0); }
   nearLadder(p) {
     const r = this.ladderRadial(), t = this.ladderTangent();
     const rho = p.dot(r);
@@ -175,10 +268,15 @@ export class InteriorPlayer {
     const off = p.clone().addScaledVector(r, -rho).addScaledVector(t, -LADDER_OFF);
     return Math.hypot(off.dot(t) + 0.45, off.z);
   }
-  toLadder() {
-    const p = this.mode === 'walk' ? this.walker.pos.clone() : this.floater.pos.clone().addScaledVector(this.ladderRadial(), 0.95);
-    this.ladder.rho = Math.min(R - 0.02, Math.max(HUB_R + 0.6, p.dot(this.ladderRadial())));
+  // rhoFeet: radial position of the feet on the ladder
+  toLadder(rhoFeet = null) {
+    const r = this.ladderRadial();
+    let rho = rhoFeet;
+    if (rho === null) rho = this.mode === 'walk' ? this.walker.pos.dot(r) : this.floater.pos.dot(r) + 0.95;
+    this.ladder.rho = Math.min(R - 0.02, Math.max(HUB_R + 0.8, rho));
     this.ladder.rate = 0;
+    this.headPitch = 0;
+    this.ladderYaw = 0;
     this.mode = 'ladder';
     this.game.audio?.clunk(0.2, 2.2);
     this.game.emit('player:ladder', true);
@@ -186,16 +284,16 @@ export class InteriorPlayer {
   stepLadder(dt, input, yaw, pitch) {
     const L2 = this.ladder;
     const g = this.omegaB.lengthSq() * L2.rho;            // w^2 r, fades toward the hub
-    const climb = input.axis('KeyS', 'KeyW');                // + = up (toward hub)
-    const vmax = (input.key('ShiftLeft') ? 1.5 : 1.0) * (0.75 + 0.6 * (1 - Math.min(1, g / G0)));
+    const climb = input.axis('KeyS', 'KeyW');                // + = up (toward the hub)
+    const vmax = (input.key('ShiftLeft') || input.key('ShiftRight') ? 2.0 : 1.3) * (0.8 + 0.6 * (1 - Math.min(1, g / G0)));
     const target = -climb * vmax;                            // d(rho)/dt
     L2.rate += (target - L2.rate) * Math.min(1, dt * 5);
     L2.rho += L2.rate * dt;
     // Coriolis on the climber: a = -2 w x v, v = rho_dot r_hat -> -2 w rho_dot t_hat
     L2.coriolis = -2 * this.omegaB.z * L2.rate;              // + pushes spinward (into the rungs)
     L2.g = g;
-    this.headPitch = Math.max(-1.2, Math.min(1.2, this.headPitch + pitch));
-    this.ladderYaw = Math.max(-1.3, Math.min(1.3, (this.ladderYaw || 0) + yaw));
+    this.headPitch = Math.max(-1.3, Math.min(1.3, this.headPitch + pitch));
+    this.ladderYaw = Math.max(-1.4, Math.min(1.4, this.ladderYaw + yaw));
     if (Math.abs(L2.rate) > 0.05) { this._rung = (this._rung || 0) + Math.abs(L2.rate) * dt; if (this._rung > 0.32) { this._rung = 0; this.game.audio?.footstep('metal', 0.5); } }
     // bottom: step off onto the airlock floor
     if (L2.rho >= R - 0.03 && climb < 0) { L2.rho = R - 0.03; this.toWalk(true); return; }
@@ -203,15 +301,8 @@ export class InteriorPlayer {
     // top: float out into the hub
     if (L2.rho < HUB_R + 0.75) {
       const r = this.ladderRadial();
-      const p = this.ladderBodyPos(new Vector3());
-      this.toFloat(p, r.clone().multiplyScalar(-0.35));
-      this.floater.quat.setFromUnitVectors(new Vector3(0, 0, -1), r.clone().negate());
-      return;
-    }
-    if (input.hit('Space')) {
-      const p = this.ladderBodyPos(new Vector3());
-      this.toFloat(p, this.ladderRadial().multiplyScalar(L2.rate).addScaledVector(this.ladderTangent(), -0.4));
-      this.game.ui.toast('LET GO OF THE LADDER');
+      const p = this.ladderBodyPos(new Vector3()).addScaledVector(r, -0.6);
+      this.toFloatAt(p, new Vector3(0, 0, 1), this.hubUp(), r.clone().multiplyScalar(-0.2));
     }
   }
   ladderBodyPos(out) {
@@ -220,14 +311,10 @@ export class InteriorPlayer {
     return out.copy(r).multiplyScalar(this.ladder.rho - 0.95).addScaledVector(t, LADDER_OFF - 0.42 + lean);
   }
 
-  toFloat(center, vel) {
+  toFloatAt(center, fwd, up, vel = new Vector3()) {
     const F = this.floater;
     F.pos.copy(center); F.vel.copy(vel);
-    if (this.mode === 'walk') {
-      const W = this.walker;
-      const m = new Matrix4().makeBasis(new Vector3().crossVectors(W.forward, W.up).normalize(), W.up, W.forward.clone().negate());
-      F.quat.setFromRotationMatrix(m);
-    }
+    F.lookAlong(fwd, up);
     this.mode = 'float';
     this.game.emit('player:float');
   }
@@ -250,6 +337,7 @@ export class InteriorPlayer {
       W.forward.normalize();
     }
     W.pitch = 0;
+    this.camDist = 0.6;
     this.mode = 'walk';
     this.game.emit('player:walk');
   }
@@ -261,19 +349,20 @@ export class InteriorPlayer {
     g.audio?.clunk(Math.min(1.5, speed / 8), 1.1);
     if (!this._injT || performance.now() - this._injT > 6000) {
       this._injT = performance.now();
-      g.ui.subs.say('case', speed > 9
-        ? `You hit at ${speed.toFixed(1)} metres per second. In the rotating frame you were falling the whole way down that spoke. Please use the ladder.`
-        : `Impact at ${speed.toFixed(1)} metres per second. Bruised, not broken.`, { key: 'fall', cooldown: 6 });
+      g.ui.subs.say('case', speed > 9 ? `Impact at ${speed.toFixed(1)} metres per second. Please use the ladder.` : `Impact at ${speed.toFixed(1)} metres per second. Bruised, not broken.`, { key: 'fall', cooldown: 6 });
     }
   }
 
   // ---- interactions -------------------------------------------------------------
   playerPos(out = new Vector3()) {
+    if (this.mode === 'glide') return out.copy(this.glidePose().pos);
     if (this.mode === 'walk') return out.copy(this.walker.pos).addScaledVector(this.walker.up, 1.2);
     if (this.mode === 'ladder') return this.ladderBodyPos(out);
     return out.copy(this.floater.pos);
   }
   updateInteract(input) {
+    const ui = this.game.ui;
+    if (this.mode === 'glide') { this.focusInteract = null; ui.prompt(null); return; }
     const p = this.playerPos(new Vector3());
     let best = null, bd = 1e9;
     for (const it of this.interior.interactables) {
@@ -282,7 +371,6 @@ export class InteriorPlayer {
       if (d < it.radius && d < bd) { bd = d; best = it; }
     }
     this.focusInteract = best;
-    const ui = this.game.ui;
     if (best) {
       if (best.hold > 0) {
         if (input.key('KeyE')) best.progress += 1 / 60 / best.hold; else best.progress = 0;
@@ -292,25 +380,24 @@ export class InteriorPlayer {
         ui.prompt('E', best.prompt);
         if (input.hit('KeyE')) best.action();
       }
-    } else if (this.mode === 'float' && this.nearRail()) ui.prompt('E', 'Hold to grab handrail');
-    else if (this.mode !== 'ladder' && this.nearLadder(p) < 1.2) ui.prompt(this.mode === 'walk' ? 'W' : 'E', 'Climb the ladder');
-    else if (this.mode === 'ladder') ui.prompt('W/S', `Climb · Space let go · ${(this.ladder.g / G0).toFixed(2)} g`);
+    } else if (this.mode === 'ladder') {
+      const L2 = this.ladder;
+      ui.prompt('W / S', L2.rho > R - 4 ? 'Climb up · S step off at the bottom' : 'Climb up toward the hub  ·  down to the ring');
+    } else if (this.mode === 'walk' && this.nearLadder(p) < 1.2 && this.walker.forward.dot(this.ladderTangent()) > 0.3) ui.prompt('W', 'Walk into the ladder to climb');
     else ui.prompt(null);
   }
-  nearRail() {
-    for (const r of this.interior.rails) {
-      const ab = new Vector3().subVectors(r.b, r.a);
-      const t = Math.max(0, Math.min(1, new Vector3().subVectors(this.floater.pos, r.a).dot(ab) / ab.lengthSq()));
-      if (r.a.clone().addScaledVector(ab, t).distanceTo(this.floater.pos) < 0.75) return true;
-    }
-    return false;
+
+  // current guidance target for the HUD (station frame), set by missions
+  updateWaypoint() {
+    const dest = this.game.mission?.interiorTarget?.();
+    if (!dest || this.mode === 'glide' || this.game.cutscene) { this.waypoint = null; return; }
+    this.waypoint = nextWaypoint(this.interior.space, this.playerPos(new Vector3()), dest, this.mode);
   }
 
   // ---- bolts (Coriolis demonstration) ------------------------------------------
   dropBolt() {
     const p = this.playerPos(new Vector3());
-    let fwd;
-    if (this.mode === 'walk') fwd = this.walker.forward.clone(); else fwd = this.floater.forward();
+    const fwd = this.mode === 'walk' ? this.walker.forward.clone() : this.floater.forward();
     const pos = p.addScaledVector(fwd, 0.45);
     const vel = this.mode === 'walk' ? this.walker.vel.clone() : this.mode === 'float' ? this.floater.vel.clone() : new Vector3();
     const mesh = new Mesh(this.boltGeo, this.boltMat);
@@ -339,7 +426,7 @@ export class InteriorPlayer {
           b.done = true;
           const u = fromStation(b.pos);
           const drift = u.s - b.s0;
-          this.game.ui.subs.say('case', `Bolt fell ${(b.h0 - u.h).toFixed(2)} metres in ${b.t.toFixed(2)} seconds and landed ${Math.abs(drift * 100).toFixed(1)} centimetres ${drift < 0 ? 'antispinward' : 'spinward'} of where it was dropped. Coriolis. The floor moved; the bolt didn't.`, { key: 'bolt', cooldown: 4 });
+          this.game.ui.subs.say('case', `The bolt landed ${Math.abs(drift * 100).toFixed(0)} centimetres ${drift < 0 ? 'antispinward' : 'spinward'} of where you dropped it. Coriolis: the floor moved, the bolt didn't.`, { key: 'bolt', cooldown: 4 });
         }
       }
       b.mesh.position.copy(b.pos);
@@ -353,9 +440,7 @@ export class InteriorPlayer {
     const pp = this.playerPos(new Vector3());
     this.interior.update(dt, pp);
     const a = this.model;
-    const lamp = a.lamp;
-    lamp.intensity = this.flashlight ? 14 : 0;
-    // model pose
+    a.lamp.intensity = this.flashlight ? 14 : 0;
     const root = a.root;
     if (this.mode === 'walk') {
       const W = this.walker;
@@ -364,20 +449,20 @@ export class InteriorPlayer {
       root.quaternion.setFromRotationMatrix(_m);
       a.animate({ mode: W.speed > 0.15 ? (W.running ? 'run' : 'walk') : 'idle', speed: W.speed, dt });
     } else if (this.mode === 'ladder') {
-      const r = this.ladderRadial(), t = this.ladderTangent();
+      const t = this.ladderTangent();
       const body = this.ladderBodyPos(new Vector3());
-      const up = r.clone().negate();
+      const up = this.ladderRadial().negate();
       root.position.copy(body).addScaledVector(up, -0.95);
       _m.makeBasis(new Vector3().crossVectors(up, t).normalize().negate(), up, t.clone().negate());
       root.quaternion.setFromRotationMatrix(_m);
       a.animate({ mode: 'climb', climbRate: Math.abs(this.ladder.rate), sideLean: Math.max(-0.2, Math.min(0.2, (this.ladder.coriolis || 0) * 0.15)), dt });
-    } else {
+    } else if (this.mode === 'float') {
       const F = this.floater;
       root.quaternion.copy(F.quat);
       root.position.copy(F.pos).addScaledVector(F.up(), -0.95);
       a.animate({ mode: 'float', dt });
     }
-    root.visible = (!this.firstPerson && !this.autoFP) || !!this.game.cutscene;
+    root.visible = this.mode === 'walk' && !this.firstPerson && !this.autoFP && !this.game.cutscene;
     // area announcements + ambience
     const area = this.interior.space.area(pp);
     if (area !== this.area) {
@@ -391,30 +476,28 @@ export class InteriorPlayer {
     const u = fromStation(pp);
     this.game.waterLevel = hs ? Math.max(0, 1 - Math.abs(u.s - hs) / 14) * (u.h > -1 && u.h < 4 ? 1 : 0) : 0;
     this.game.humScale = area === 'hub' || area === 'spoke' ? 0.6 : 1;
-    this.updateCoriolisReadout();
+    this.updateWaypoint();
+    this.updateStatusLine();
   }
 
-  updateCoriolisReadout() {
+  // one compact physics line (shown with the detailed HUD)
+  updateStatusLine() {
     const ui = this.game.ui;
     const w = this.omegaB;
     let txt = '';
     if (this.mode === 'walk') {
       const W = this.walker;
-      const cor = coriolis(w, W.vel, new Vector3());
       this.env.gravity(W.pos, _v);
-      const g = _v.length();
-      const felt = _v.clone().add(cor);
+      const cor = coriolis(w, W.vel, new Vector3());
       const vert = -cor.dot(W.up);
-      const sw = W.vel.dot(new Vector3(0, 0, 1).cross(W.up).negate());
-      if (W.speed > 0.4) txt = `APPARENT ${(felt.length() / G0).toFixed(2)} g · Coriolis ${vert >= 0 ? '+' : ''}${(vert / G0).toFixed(2)} g (${sw > 0 ? 'running spinward: heavier' : 'running antispinward: lighter'})`;
-      else txt = `${(g / G0).toFixed(2)} g · r = ${Math.hypot(W.pos.x, W.pos.y).toFixed(1)} m`;
+      txt = `${(_v.length() / G0).toFixed(2)} g` + (W.speed > 0.4 ? ` · Coriolis ${vert >= 0 ? '+' : ''}${(vert / G0).toFixed(2)} g` : '');
     } else if (this.mode === 'ladder') {
       const c = this.ladder.coriolis || 0;
-      txt = `${(this.ladder.g / G0).toFixed(2)} g · r = ${this.ladder.rho.toFixed(1)} m` + (Math.abs(c) > 0.05 ? ` · CORIOLIS ${Math.abs(c).toFixed(2)} m/s² ${c > 0 ? 'pressing you into the rungs' : 'pulling you off the ladder'}` : '');
-    } else {
+      txt = `${(this.ladder.g / G0).toFixed(2)} g · r ${this.ladder.rho.toFixed(1)} m` + (Math.abs(c) > 0.05 ? ` · Coriolis ${c > 0 ? 'into the rungs' : 'off the ladder'}` : '');
+    } else if (this.mode === 'float') {
       const F = this.floater;
       this.env.gravity(F.pos, _v);
-      txt = `${(_v.length() / G0).toFixed(3)} g · drift ${F.vel.length().toFixed(2)} m/s · suit gas ${(F.gas * 100).toFixed(0)}%${F.grabbing ? ' · HOLDING RAIL' : ''}`;
+      txt = `${(_v.length() / G0).toFixed(3)} g · suit gas ${(F.gas * 100).toFixed(0)}%`;
     }
     ui.setCoriolis(this.game.cutscene ? '' : txt);
   }
@@ -423,32 +506,48 @@ export class InteriorPlayer {
   updateCamera(dt, origin, camera) {
     if (!this.interior) return;
     const root = this.game.meridianModel.root;
-    const target = new Vector3(), pos = new Vector3(), quat = new Quaternion();
-    let up, fwd;
-    if (this.mode === 'walk') {
+    const pos = new Vector3(), quat = new Quaternion();
+    let up, fwd, eye;
+    let fp = true;
+    if (this.mode === 'glide') {
+      const gp = this.glidePose();
+      eye = gp.pos; fwd = gp.fwd; up = gp.up;
+    } else if (this.mode === 'walk') {
       const W = this.walker;
       up = W.up.clone();
       fwd = W.forward.clone().applyAxisAngle(new Vector3().crossVectors(W.forward, W.up).normalize(), W.pitch);
-      target.copy(W.pos).addScaledVector(up, 1.62);
+      eye = W.pos.clone().addScaledVector(up, EYE_H);
+      fp = this.firstPerson;
     } else if (this.mode === 'ladder') {
       const t = this.ladderTangent();
       up = this.ladderRadial().negate();
-      fwd = t.clone().applyAxisAngle(up, this.ladderYaw || 0);
+      fwd = t.clone().applyAxisAngle(up, this.ladderYaw);
       fwd.applyAxisAngle(new Vector3().crossVectors(fwd, up).normalize(), this.headPitch);
-      target.copy(this.ladderBodyPos(new Vector3())).addScaledVector(up, 0.68);
+      eye = this.ladderBodyPos(new Vector3()).addScaledVector(up, LADDER_EYE - 0.95);
     } else {
       const F = this.floater;
       up = F.up(); fwd = F.forward();
-      target.copy(F.pos).addScaledVector(up, 0.66);
+      eye = F.pos.clone().addScaledVector(up, 0.12);
     }
-    this.autoFP = false;
-    if (this.firstPerson) pos.copy(target).addScaledVector(fwd, 0.12);
-    else {
-      const back = target.clone().addScaledVector(fwd, -2.3).addScaledVector(up, 0.45);
-      const d = this.interior.space.march(target, back, 0.18);
-      // too tight for a chase camera (spoke, Kestrel cabin): go first person
-      if (d < 1.05) { this.autoFP = true; pos.copy(target).addScaledVector(fwd, 0.12); }
-      else pos.copy(target).addScaledVector(back.sub(target).normalize(), d);
+    this.camUp = up.clone();
+    if (fp) {
+      pos.copy(eye);
+      this.autoFP = false;
+    } else {
+      // over the right shoulder, pulled in by a sphere-cast so it stays inside
+      const right = new Vector3().crossVectors(fwd, up).normalize();
+      const flatF = fwd.clone().addScaledVector(up, -fwd.dot(up)).normalize();
+      const pivot = eye.clone().addScaledVector(up, -0.12);
+      const want = pivot.clone().addScaledVector(flatF, -2.1).addScaledVector(up, 0.32 - fwd.dot(up) * 0.9).addScaledVector(right, 0.42);
+      const dir = want.clone().sub(pivot);
+      const maxD = dir.length();
+      dir.normalize();
+      const free = this.interior.space.march(pivot, want, 0.2);
+      if (free < this.camDist) this.camDist = free;                         // pull in at once
+      else this.camDist += (Math.min(free, maxD) - this.camDist) * Math.min(1, dt * 2.5); // ease back out
+      if (this.camDist < 0.55) this.autoFP = true; else if (this.camDist > 0.9) this.autoFP = false;
+      if (this.autoFP) pos.copy(eye);
+      else pos.copy(pivot).addScaledVector(dir, this.camDist);
     }
     _m.lookAt(pos, pos.clone().add(fwd), up);
     quat.setFromRotationMatrix(_m);
@@ -467,7 +566,6 @@ export class InteriorPlayer {
     camera.quaternion.copy(root.quaternion).multiply(quat);
     const fov = settings.get('fov');
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
-    // helmet lamp follows the view
     this.model.lamp.target.position.set(0, 0, -3);
   }
 
@@ -475,6 +573,8 @@ export class InteriorPlayer {
     for (const b of this.bolts) b.mesh.removeFromParent();
     this.bolts = [];
     this.flashlight = false;
+    this.glide = null;
+    this.waypoint = null;
   }
 
   debugLines() {

@@ -50,6 +50,9 @@ export class IceMission extends Mission {
   }
 
   allowExit() { return false; }
+  allowBoard() { return this.phase === 'walk'; }
+  controlsNote() { return this.phase === 'walk' ? 'Walk to the Kestrel: follow the yellow ◆ marker — ladder, hub, hatch, pilot seat. <kbd>E</kbd> at each one.' : null; }
+  interiorTarget() { return this.phase === 'walk' ? 'kestrel' : null; }
   allowUndock() { return this.phase === 'cockpit'; }
   onUndockStart() { this.phase = 'releasing'; }
   warpLimit() { return this.phase === 'surface' || this.phase === 'wrecking' ? 1 : 50; }

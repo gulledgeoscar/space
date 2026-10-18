@@ -7,7 +7,7 @@ import {
   Group, Mesh, MeshStandardMaterial, Color, Vector3, Shape, ExtrudeGeometry, LatheGeometry,
   Vector2, CylinderGeometry, BoxGeometry, TorusGeometry, SphereGeometry, PointLight, SpotLight,
   ConeGeometry, Float32BufferAttribute, PlaneGeometry, MeshBasicMaterial, DoubleSide, AdditiveBlending,
-  CanvasTexture,
+  CanvasTexture, BackSide, RingGeometry,
 } from 'three';
 import { loft, GeoBatch, canvasTexture, labelTexture } from '../world/geometry.js';
 import { materials } from '../world/materials.js';
@@ -167,8 +167,13 @@ export function buildKestrelModel({ livery = 'kestrel' } = {}) {
   exterior.add(collar);
 
   // RCS pods at the physical jet positions (one pod per jet cluster)
+  // (own mesh: the forward top pod sits right in front of the windscreen,
+  // so it is hidden in the cockpit view)
   const podGeo = new BoxGeometry(0.24, 0.24, 0.3);
-  for (const p of KESTREL_PODS()) b.add(podGeo, M.hullDark, p);
+  const pb = new GeoBatch();
+  for (const p of KESTREL_PODS()) pb.add(podGeo, M.hullDark, p);
+  const pods = pb.build();
+  exterior.add(pods);
   // heat-shield chin tiles band
   b.box(2.3, 0.04, 9.0, M.tiles, new Vector3(0, -1.2, 0.8));
   // registration
@@ -229,7 +234,7 @@ export function buildKestrelModel({ livery = 'kestrel' } = {}) {
 
   return {
     root, exterior, hull, canopy, canopyWindows, hullMat, collar, gear, legs, plumes, plumeMat, strobe, strobeMat,
-    cockpit, nozzles, noseHatch,
+    cockpit, nozzles, noseHatch, pods,
   };
 }
 
@@ -255,8 +260,8 @@ function buildCockpit(M) {
   b.box(2.3, 0.06, 2.75, wall, new Vector3(0, 1.52, -3.95));
   b.box(2.3, 2.1, 0.06, wall, new Vector3(0, 0.45, -2.6));
   for (const s of [-1, 1]) {
-    b.box(0.06, 1.35, 3.3, wall, new Vector3(s * 1.15, 0.08, -4.25));          // lower side wall
-    b.box(0.06, 0.65, 2.2, wall, new Vector3(s * 1.12, 1.2, -3.7));            // upper side wall, aft
+    b.box(0.06, 1.42, 3.3, wall, new Vector3(s * 1.15, 0.11, -4.25));          // lower side wall (to y 0.82)
+    b.box(0.06, 0.8, 2.25, wall, new Vector3(s * 1.13, 1.13, -3.72));          // upper side wall, aft (from y 0.73)
     // side window frames (window between z -5.7 and -4.7, y 0.78 .. 1.42)
     b.box(0.08, 0.08, 1.1, frame, new Vector3(s * 1.1, 0.78, -5.2));
     b.box(0.08, 0.08, 1.1, frame, new Vector3(s * 1.05, 1.44, -5.15));
@@ -273,8 +278,7 @@ function buildCockpit(M) {
   b.box(2.2, 0.62, 0.08, M.panelDark, new Vector3(0, 0.46, -5.5), { x: 0.42, y: 0, z: 0 });
   b.box(2.3, 0.75, 0.06, M.panelDark, new Vector3(0, -0.2, -5.88));
   // hatch ring in the forward bulkhead (to the docking collar)
-  b.add(new TorusGeometry(0.42, 0.05, 8, 32), M.hazard, new Vector3(0, -0.12, -5.84));
-  b.cyl(0.4, 0.4, 0.04, M.metal, new Vector3(0, -0.12, -5.86), { x: Math.PI / 2, y: 0, z: 0 }, 24);
+  b.add(new TorusGeometry(0.52, 0.05, 8, 32), M.hazard, new Vector3(0, -0.12, -5.86));
   // centre console between the pilot's knees
   b.box(0.36, 0.28, 0.7, M.panelDark, new Vector3(0, 0.05, -4.95));
   for (let i = 0; i < 8; i++) b.add(new BoxGeometry(0.03, 0.04, 0.03), i % 3 ? M.metal : M.accent, new Vector3(-0.12 + (i % 4) * 0.08, 0.2, -5.1 + Math.floor(i / 4) * 0.12));
@@ -300,6 +304,39 @@ function buildCockpit(M) {
   const shell = b.build({ castShadow: false });
   group.add(shell);
 
+  // nose tunnel from the hatch up to the docking ring, seen from inside
+  const tubeMat = new MeshStandardMaterial({ color: 0x8d949b, roughness: 0.6, metalness: 0.3, side: BackSide });
+  const a = new Vector3(0, -0.12, -5.86), bEnd = new Vector3(0, 0, -7.12);
+  const len = a.distanceTo(bEnd);
+  const tube = new Mesh(new CylinderGeometry(0.52, 0.52, len, 28, 3, true), tubeMat);
+  tube.position.copy(a).add(bEnd).multiplyScalar(0.5);
+  tube.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), bEnd.clone().sub(a).normalize());
+  group.add(tube);
+  for (const z of [-6.3, -6.85]) {
+    const lamp = new Mesh(new TorusGeometry(0.49, 0.025, 6, 28), new MeshBasicMaterial({ color: new Color(2.2, 2.1, 1.9) }));
+    lamp.position.set(0, -0.12 + 0.12 * (z + 5.86) / -1.26, z);
+    group.add(lamp);
+  }
+  // annular seal where the tunnel meets the station's port tunnel
+  const seal = new Mesh(new RingGeometry(0.5, 0.78, 32), new MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.7, side: DoubleSide }));
+  seal.position.set(0, 0, -7.12);
+  group.add(seal);
+  // window glass seen from inside (the exterior panes hide with the hull)
+  const cabGlass = new MeshStandardMaterial({ color: 0x3a5468, roughness: 0.03, metalness: 0.5, transparent: true, opacity: 0.22, depthWrite: false, side: DoubleSide });
+  for (const s of [-1, 1]) {
+    const p = new Mesh(new PlaneGeometry(1.05, 0.66), cabGlass);
+    p.position.set(s * 1.13, 1.1, -5.17); p.rotation.y = Math.PI / 2;
+    group.add(p);
+  }
+  const ws = new Mesh(new PlaneGeometry(2.15, 0.78), cabGlass);
+  ws.position.set(0, 1.13, -5.6); ws.rotation.x = -0.55;
+  group.add(ws);
+  // inner hatch door: swings out of the way once the hatch is open
+  const innerHatch = new Mesh(new CylinderGeometry(0.5, 0.5, 0.05, 28), M.metal);
+  innerHatch.rotation.x = Math.PI / 2;
+  innerHatch.position.set(0, -0.12, -5.87);
+  group.add(innerHatch);
+
   // MFD screens on the sloped main panel (canvas, updated by the HUD)
   const screens = [];
   for (const [x, w] of [[-0.66, 0.5], [0, 0.56], [0.66, 0.5]]) {
@@ -314,7 +351,7 @@ function buildCockpit(M) {
   const cabinLight = new PointLight(0xffe2c0, 0.0, 4, 2);
   cabinLight.position.set(0, 1.3, -4.0);
   group.add(cabinLight);
-  return { group, screens, cabinLight };
+  return { group, screens, cabinLight, innerHatch };
 }
 
 // First-stage booster (in Kestrel body coordinates: it hangs below the tail).

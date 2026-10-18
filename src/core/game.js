@@ -26,7 +26,7 @@ import { buildKestrelModel } from '../ship/kestrelModel.js';
 import { buildMeridianModel } from '../ship/meridianModel.js';
 import { buildDockingPortModel } from '../ship/dockingPort.js';
 import { KESTREL } from '../ship/kestrel.js';
-import { PilotController } from '../player/piloting.js';
+import { PilotController, CHASE_DEFAULT } from '../player/piloting.js';
 import { InteriorPlayer } from '../player/interiorPlayer.js';
 import { UI } from '../ui/ui.js';
 import { AudioEngine } from '../audio/audio.js';
@@ -287,6 +287,7 @@ export class Game {
   // ---- missions ----------------------------------------------------------------
   resetWorld() {
     this.world = new World();
+    this.hatchOpen = true;   // closed only while undocking; opens with equal pressure
     this.interior?.reset?.();
     this.surface?.dispose?.();
     this.surface = null;
@@ -296,6 +297,7 @@ export class Game {
     this.warp = 1;
     this.pilot.enabled = true; this.pilot.lockControls = false; this.pilot.allowMain = true;
     this.pilot.killRot = false; this.pilot.killVel = false; this.pilot.attMode = null; this.pilot.burnTarget = null;
+    this.pilot.chase = { ...CHASE_DEFAULT }; this.pilot._frame = null;
     this.ui.hud.cues.clear();
     this.ui.hud.phaseText = null; this.ui.hud.phaseSub = null;
     this.extraWarnings = [];
@@ -332,6 +334,9 @@ export class Game {
       this.mission.checkpointData = restore;
       this.mission.checkpointName = restore.name || this.mission.checkpointName;
     }
+    // hold the mission on a controls card until the player is ready
+    this.ui.controls.clear();
+    if (!restore && !opts.noCard) this.ui.controls.show(this.mission);
     this.input.wantLock = true;
     this.input.requestLock();
   }
@@ -362,7 +367,12 @@ export class Game {
     const K = this.world.kestrel, D = this.world.docking;
     for (const e of K.events) this.emit('kestrel:' + e.type, e);
     K.events.length = 0;
-    for (const e of D.events) this.emit('dock:' + e.type, e);
+    for (const e of D.events) {
+      // the hatches open once pressure is equal and close for undocking
+      if (e.type === 'pressurised') this.hatchOpen = true;
+      if (e.type === 'releaseStart') this.hatchOpen = false;
+      this.emit('dock:' + e.type, e);
+    }
     D.events.length = 0;
     for (const h of this.world.debrisHits) this.emit('debrisHit', h);
     this.world.debrisHits.length = 0;
@@ -424,7 +434,11 @@ export class Game {
   // ---- modes ---------------------------------------------------------------------
   enterInterior(spawn = 'bridge', opts = {}) {
     const ip = this.interiorPlayer;
-    const fromCamera = opts.blend ? this.cameraInStation() : null;
+    // blend only when the camera is already inside the cabin (cockpit view ->
+    // floating beside the seat); anything else would sweep through the hull
+    const inside = this.mode === 'flight' && this.pilot.camMode === 'cockpit' && spawn === 'seat';
+    const fromCamera = opts.blend && inside ? this.cameraInStation() : null;
+    if (!fromCamera && this.mode !== 'title') this.ui.flashFade();
     ip.spawn(spawn, { ...opts, fromCamera });
     this.mode = 'interior';
     this.controller = ip;
@@ -442,7 +456,8 @@ export class Game {
     const kAbs = this.interpBodyPos(this.world.kestrel.body, new Vector3());
     const fromOff = camNow.position.clone().add(this.pipeline.origin).sub(kAbs);
     const fromQuat = camNow.quaternion.clone();
-    const canBlend = blend && this.mode !== 'flight' && this.mode !== 'title' && fromOff.length() < 60;
+    const canBlend = blend && cam === 'cockpit' && this.mode === 'interior' && this.interiorPlayer.area === 'kestrel' && fromOff.length() < 6;
+    if (!canBlend && this.mode !== 'title' && this.mode !== 'flight') this.ui.flashFade();
     this.mode = 'flight';
     this.controller = this.pilot;
     if (this.interiorPlayer.interior) this.interiorPlayer.interior.group.visible = false;
@@ -595,6 +610,7 @@ export class Game {
     const inCockpit = (this.mode === 'flight' && this.pilot.camMode === 'cockpit') || this.mode === 'interior';
     km.cockpit.group.visible = inCockpit;
     km.hull.visible = !(this.mode === 'flight' && this.pilot.camMode === 'cockpit');
+    km.pods.visible = km.hull.visible;
     km.canopy.visible = km.hull.visible;
     km.canopyWindows.visible = km.hull.visible && this.mode !== 'interior';
     km.cockpit.cabinLight.intensity = inCockpit ? 0.6 : 0;
@@ -628,6 +644,7 @@ export class Game {
     const open = D.state === 'hard' && D.pressure >= 1 && this.hatchOpen;
     pm.hatch.visible = !open;
     this.kestrelModel.noseHatch.visible = !open;
+    this.kestrelModel.cockpit.innerHatch.visible = !open;
     pm.target.visible = D.state === 'free' || D.state === 'soft';
     mm.beacons.forEach((b) => { b.visible = (t % 2.0) < 0.12; });
     this.corridor.visible = near && D.state === 'free' && settings.difficulty.trajectory && !this.mapOpen && r.range > 4;
