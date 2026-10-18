@@ -69,7 +69,7 @@ export class Voice {
     const prof = PROFILES[who] || PROFILES.pilot;
     const used = new Set(Object.entries(this.cast).filter(([k]) => k !== who).map(([, v]) => v.name));
     if (who !== 'case') { const c = this.pick('case'); if (c) used.add(c.name); }
-    const ranked = this.voices.map((v) => ({ v, s: scoreVoice(v) + (genderOf(v) === prof.gender ? 4 : genderOf(v) === '?' ? 0 : -6) - (used.has(v.name) ? 8 : 0) }))
+    const ranked = this.voices.map((v) => ({ v, s: scoreVoice(v) + (genderOf(v) === prof.gender ? 4 : genderOf(v) === '?' ? 0 : -6) - (used.has(v.name) ? 40 : 0) }))
       .sort((a, b) => b.s - a.s);
     this.cast[who] = ranked[0].v;
     return this.cast[who];

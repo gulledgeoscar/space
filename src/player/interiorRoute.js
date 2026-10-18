@@ -20,7 +20,7 @@ export const DESTINATIONS = {
   hub: { label: 'HUB', area: 'hub' },
   airlock: { label: 'RING', area: 'ring', s: SPOKE_S - 2.5 },
   bridge: { label: 'BRIDGE', area: 'ring', s: 9.0 },
-  console: { label: 'MAIN CONSOLE', area: 'ring', s: 16.4 },
+  console: { label: 'MAIN CONSOLE', area: 'ring', s: 4.6 },
 };
 
 function areaClass(a) {

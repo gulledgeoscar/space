@@ -291,51 +291,53 @@ export class MeridianInterior {
   // ---------------- room furnishings ------------------------------------------
   room_bridge(b, s0, s1, hw, x) {
     const M = this.M;
-    // big curved main console near the far (spinward) end, facing back
-    const cs = s0 + 17.2;
+    // You enter from the corridor at the spinward end (s1); the big curved
+    // main console stands at the far end, facing the door.
+    const cs = s1 - 17.2;
     for (let k = -4; k <= 4; k++) {
       const z = k * 0.62;
-      const yaw = -k * 0.09;
-      b.box(0.9, 0.95, 0.6, M.panelDark, cs + Math.abs(k) * 0.06 * Math.abs(k), 0, z, yaw);
-      b.box(0.65, 0.05, 0.6, M.rubber, cs - 0.15 + Math.abs(k) * 0.06 * Math.abs(k), 0.95, z, yaw);
+      const yaw = k * 0.09;
+      b.box(0.9, 0.95, 0.6, M.panelDark, cs - Math.abs(k) * 0.06 * Math.abs(k), 0, z, yaw);
+      b.box(0.65, 0.05, 0.6, M.rubber, cs + 0.15 - Math.abs(k) * 0.06 * Math.abs(k), 0.95, z, yaw);
     }
-    addObstacle(cs - 0.5, cs + 1.9, 0, 1.0, -2.8, 2.8, 'console');
+    addObstacle(cs - 1.9, cs + 0.5, 0, 1.0, -2.8, 2.8, 'console');
     // three large screens above the console
     const live = (title) => (c, w, h, t) => this.drawBridgeScreen(c, w, h, title, t);
     this.bridgeScreens = [
-      this.screen(1.5, 0.9, cs + 0.6, 1.75, -1.65, -Math.PI / 2 + 0.25, live('STATION'), true),
-      this.screen(1.8, 1.05, cs + 0.75, 1.85, 0, -Math.PI / 2, live('MISSION'), true),
-      this.screen(1.5, 0.9, cs + 0.6, 1.75, 1.65, -Math.PI / 2 - 0.25, live('CASE-9'), true),
+      this.screen(1.5, 0.9, cs - 0.6, 1.75, -1.65, Math.PI / 2 - 0.25, live('STATION'), true),
+      this.screen(1.8, 1.05, cs - 0.75, 1.85, 0, Math.PI / 2, live('MISSION'), true),
+      this.screen(1.5, 0.9, cs - 0.6, 1.75, 1.65, Math.PI / 2 + 0.25, live('CASE-9'), true),
     ];
-    for (const z of [-1.65, 0, 1.65]) b.box(0.08, 1.2, 0.08, M.darkMetal, cs + 0.85, 0.95, z);
-    this.interact('bridgeConsole', cs - 0.7, 1.0, 0, 'Use main console', () => this.game.emit('interact:bridgeConsole'), { radius: 1.8 });
-    // captain's chair + two stations
+    for (const z of [-1.65, 0, 1.65]) b.box(0.08, 1.2, 0.08, M.darkMetal, cs - 0.85, 0.95, z);
+    this.consoleS = cs;
+    this.interact('bridgeConsole', cs + 0.7, 1.0, 0, 'Use main console', () => this.game.emit('interact:bridgeConsole'), { radius: 2.6, enabled: () => this.game.mission?.allowConsole?.() === true });
+    // captain's chair + two stations (seats face the console)
     const chair = (s, z, yaw) => {
       b.cylUp(0.08, 0.45, M.metal, s, 0, z);
       b.box(0.6, 0.12, 0.6, M.seat, s, 0.45, z, yaw);
-      b.box(0.12, 0.75, 0.6, M.seat, s - 0.3, 0.5, z, yaw);
-      addObstacle(s - 0.4, s + 0.35, 0, 1.2, z - 0.35, z + 0.35, 'chair');
+      b.box(0.12, 0.75, 0.6, M.seat, s + 0.3, 0.5, z, yaw);
+      addObstacle(s - 0.35, s + 0.4, 0, 1.2, z - 0.35, z + 0.35, 'chair');
     };
-    chair(s0 + 14.6, 0, 0);
+    chair(s1 - 14.6, 0, 0);
     for (const z of [-2.2, 2.2]) {
-      b.box(1.2, 0.85, 0.5, M.panelDark, s0 + 11.5, 0, z * 1.15);
-      addObstacle(s0 + 10.9, s0 + 12.1, 0, 0.9, z * 1.15 - 0.3, z * 1.15 + 0.3, 'station');
-      chair(s0 + 10.6, z * 0.95, 0);
-      this.screen(0.9, 0.5, s0 + 11.5, 1.15, z * 1.15 - Math.sign(z) * 0.26, Math.sign(z) > 0 ? Math.PI : 0, (c, w, h) => this.drawNavScreen(c, w, h, z > 0 ? 'NAV' : 'COMMS'));
+      b.box(1.2, 0.85, 0.5, M.panelDark, s1 - 11.5, 0, z * 1.15);
+      addObstacle(s1 - 12.1, s1 - 10.9, 0, 0.9, z * 1.15 - 0.3, z * 1.15 + 0.3, 'station');
+      chair(s1 - 10.6, z * 0.95, 0);
+      this.screen(0.9, 0.5, s1 - 11.5, 1.15, z * 1.15 - Math.sign(z) * 0.26, Math.sign(z) > 0 ? Math.PI : 0, (c, w, h) => this.drawNavScreen(c, w, h, z > 0 ? 'NAV' : 'COMMS'));
     }
-    // mission patch + holo-ring decoration near the entry
+    // mission patch + sign by the entrance
     const patch = new Mesh(new CircleGeometry(0.55, 32), new MeshBasicMaterial({ map: patchTex() }));
-    toStation(s0 + 3.0, 2.2, -hw + 0.03, patch.position);
-    patch.quaternion.copy(quatAt(s0 + 3.0, 0));
+    toStation(s1 - 3.0, 2.2, -hw + 0.03, patch.position);
+    patch.quaternion.copy(quatAt(s1 - 3.0, 0));
     this.group.add(patch);
-    this.sign('BRIDGE', s0 + 3.0, 2.95, -hw + 0.02, '+z', { w: 1.0, h: 0.28 });
+    this.sign('BRIDGE', s1 - 3.0, 2.95, -hw + 0.02, '+z', { w: 1.0, h: 0.28 });
     // wall cabinets
-    for (const s of [s0 + 1.2, s0 + 2.0]) b.box(0.7, 2.0, 0.45, M.hullDark, s, 0, hw - 0.3);
-    addObstacle(s0 + 0.8, s0 + 2.4, 0, 2.0, hw - 0.55, hw, 'cabinet');
+    for (const s of [s1 - 1.2, s1 - 2.0]) b.box(0.7, 2.0, 0.45, M.hullDark, s, 0, hw - 0.3);
+    addObstacle(s1 - 2.4, s1 - 0.8, 0, 2.0, hw - 0.55, hw, 'cabinet');
     // plant + mug on a station desk
-    b.cylUp(0.18, 0.35, M.darkMetal, s0 + 1.2, 0, -hw + 0.4);
-    for (let k = 0; k < 7; k++) b.geo(new ConeGeometry(0.12, 0.5, 5), x.leaf, s0 + 1.2 + Math.sin(k) * 0.1, 0.55, -hw + 0.4 + Math.cos(k) * 0.1, k);
-    b.cylUp(0.04, 0.1, x.white, s0 + 11.4, 0.85, 2.4);
+    b.cylUp(0.18, 0.35, M.darkMetal, s1 - 1.2, 0, -hw + 0.4);
+    for (let k = 0; k < 7; k++) b.geo(new ConeGeometry(0.12, 0.5, 5), x.leaf, s1 - 1.2 + Math.sin(k) * 0.1, 0.55, -hw + 0.4 + Math.cos(k) * 0.1, k);
+    b.cylUp(0.04, 0.1, x.white, s1 - 11.4, 0.85, 2.4);
   }
 
   room_corridor(b, s0, s1, hw, x) {
@@ -487,8 +489,9 @@ export class MeridianInterior {
     inst.castShadow = true;
     this.group.add(inst, inst2);
     // water tanks + pipes at the far end
-    for (const z of [-1.0, 1.0]) { b.cylUp(0.45, 1.6, M.radiator, s1 - 1.2, 0, z); b.cylUp(0.46, 0.08, M.darkMetal, s1 - 1.2, 1.2, z); }
-    addObstacle(s1 - 1.75, s1 - 0.6, 0, 1.6, -1.5, 1.5, 'tanks');
+    // (against the side walls, so the doorway aisle stays clear)
+    for (const z of [-2.35, 2.35]) { b.cylUp(0.45, 1.6, M.radiator, s1 - 1.2, 0, z); b.cylUp(0.46, 0.08, M.darkMetal, s1 - 1.2, 1.2, z); }
+    for (const sg of [-1, 1]) addObstacle(s1 - 1.75, s1 - 0.6, 0, 1.6, sg * 1.85, sg * 2.95, 'tanks');
     b.pipeS(s0 + 2, s1 - 1.5, 2.9, 0, 0.06, M.copper);
     for (let s = s0 + 3.5; s < s1 - 2; s += 3) b.cable([s, 2.9, 0], [s, 2.2, hw - 0.6], 0, 0.02, M.copper);
     this.screen(0.8, 0.5, s1 - 2.4, 1.6, -hw + 0.04, 0, (c, w, h, t) => this.drawHydro(c, w, h, t), true);
@@ -668,7 +671,9 @@ export class MeridianInterior {
     this.seatInteract = this.interact('board', 0, 0, 0, 'Take the pilot seat', () => this.game.emit('interact:board'), { posStation: new Vector3(0, 0.6, 12.25 - 4.45), radius: 1.1, enabled: () => this.space.kestrelDocked && ip().hatchesOpen() && area() === 'kestrel' && canBoard() });
     this.hatchOut = this.interact('hatchOut', 0, 0, 0, 'Go through the hatch into the Meridian', () => ip().transit('toHub'), { posStation: new Vector3(0, -0.12, 12.25 - 5.84), radius: 2.4, enabled: () => ip().hatchesOpen() && area() === 'kestrel' && ip().mode === 'float' });
     this.hatchIn = this.interact('hatchIn', 0, 0, 0, 'Go through the hatch into the Kestrel', () => ip().transit('toCabin'), { posStation: new Vector3(0, 0, 4.0), radius: 1.5, enabled: () => ip().hatchesOpen() && area() === 'hub' });
-    this.interact('spokeDown', 0, 0, 0, 'Climb down Spoke A', () => ip().transit('toLadder'), { posStation: sA.clone().multiplyScalar(HUB_R - 1.0), radius: 1.8, enabled: () => area() === 'hub' && ip().mode === 'float' });
+    const tA = new Vector3(-Math.sin(spokeA), Math.cos(spokeA), 0);
+    this.interact('ladderUp', 0, 0, 0, 'Climb the ladder up to the hub', () => ip().toLadder(R - 0.05), { posStation: new Vector3(Math.cos(spokeA), Math.sin(spokeA), 0).multiplyScalar(R - 1.2).addScaledVector(tA, LADDER_OFF - 0.45), radius: 1.5, enabled: () => ip().mode === 'walk' && performance.now() - (ip().ladderOffAt || 0) > 2500 });
+    this.interact('spokeDown', 0, 0, 0, 'Climb down Spoke A', () => ip().transit('toLadder'), { posStation: sA.clone().multiplyScalar(HUB_R - 1.0), radius: 1.8, enabled: () => area() === 'hub' && ip().mode === 'float' && performance.now() - (ip().ladderTopAt || 0) > 3000 });
     this.interact('hubLog', 0, 0, 0, 'Hub status panel', () => this.game.emit('interact:hubLog'), { posStation: new Vector3(0, -2.9, 1.2), radius: 1.5 });
   }
 

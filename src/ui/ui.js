@@ -10,6 +10,7 @@ import { Menus } from './menus.js';
 import { DebugOverlay } from './debugOverlay.js';
 import { MapView } from './mapView.js';
 import { ControlsCard } from './controlsCard.js';
+import { Vector3 } from 'three';
 import { settings } from '../core/settings.js';
 import { formatDuration } from '../physics/timeDilation.js';
 
@@ -87,13 +88,21 @@ export class UI {
   // aboard the station: marker on the next waypoint toward the objective
   updateWaypoint() {
     const g = this.game, ip = g.interiorPlayer, el = this.waypointEl;
-    const wp = g.mode === 'interior' && !g.cutscene && !this.menus.open ? ip?.waypoint : null;
+    let wp = null, root = null, from = null;
+    if (!g.cutscene && !this.menus.open) {
+      if (g.mode === 'interior' && ip?.waypoint) { wp = ip.waypoint; root = g.meridianModel.root; from = ip.camLocal; }
+      else if (g.mode === 'surface' && g.surface && g.controller?.walker) {
+        wp = g.mission?.surfaceTarget?.();
+        root = g.surface.group;
+        from = g.controller.walker.pos.clone().add(new Vector3(0, 1.6, 0));
+      }
+    }
     if (!wp) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
     const cam = g.pipeline.camera;
-    const root = g.meridianModel.root;
+    root.updateMatrixWorld();
     const p = wp.pos.clone().applyMatrix4(root.matrixWorld);
-    const dist = ip.camLocal.distanceTo(wp.pos);
+    const dist = from.distanceTo(wp.pos);
     const v = p.clone().project(cam);
     const w = window.innerWidth, h = window.innerHeight;
     const behind = v.z > 1;

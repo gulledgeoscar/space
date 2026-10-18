@@ -75,20 +75,34 @@ Every docking has a checkpoint; a failed capture or a crash lets you retry from 
 | E | Unstrap and float to the hatch when docked |
 | **Assisted only** | K kill rotation · L kill relative velocity · 1–0 attitude holds (prograde, retrograde, normal, anti-normal, radial out/in, target, anti-target, port-align, burn) |
 
-**On foot / zero-g**
+**On foot**
 
 | Key | Action |
 |-----|--------|
-| WASD + mouse | Move and look (Shift to run) |
-| Space | Jump / push off a surface |
-| E | Interact (hold where prompted) · hold to grab handrails · climb onto a ladder |
-| Q / E | Roll (when floating) |
-| Space / Ctrl | Thruster pack up / down (when floating; gas-limited) |
+| WASD + mouse | Walk and look (Shift to run) |
+| Space | Jump |
+| E | Interact: doors open as you approach; E for consoles, hatches and the ladder |
 | F | Flashlight |
 | V | First / third person |
 | B | Drop a bolt (watch it Coriolis-drift) |
 
-**Anywhere**: Tab objectives · P physics debug overlay · Esc pause / settings.
+**Zero-g (hub, Kestrel cabin)**
+
+| Key | Action |
+|-----|--------|
+| Mouse | Look |
+| W A S D | Float. The suit's thrusters stop you when you let go. |
+| Space / Ctrl | Up / down |
+| Shift | Faster |
+| E | Go through a hatch or onto the ladder (a short guided glide) |
+
+**Ladder**: W climbs up toward the hub, S climbs down toward the ring.
+
+Aboard the station, a yellow ◆ marker always points to the next step toward your objective.
+
+**Anywhere**: Tab shows controls and objectives · I switches between the minimal HUD and the full instruments · P physics debug overlay · Esc pause / settings.
+
+Every mission opens on a controls card for the way you start (flying, floating or walking). A smaller reminder card appears the first time a mission switches you to a different mode.
 
 ## Difficulty
 
@@ -96,7 +110,7 @@ Every docking has a checkpoint; a failed capture or a crash lets you retry from 
 - **Realistic** captures at closing speed < 0.10 m/s, alignment within 1°, and lateral offset within 0.12 m, with no helpers.
 - **Expert** tightens the tolerances further, shows raw numbers only, and gives you just the grainy docking-camera feed inside 300 m.
 
-Settings also cover mouse sensitivity, invert Y, FOV, graphics quality (Low / Medium / High), the time-warp limit, volumes, subtitle size and the CASE-9 voice.
+Settings also cover mouse sensitivity, invert Y, FOV, graphics quality (Low / Medium / High), the time-warp limit, volumes and subtitle size. You can also choose CASE-9's voice: Automatic picks the most natural voice your system has, the list marks natural voices with ★, and TEST VOICE plays a sample.
 
 ## The physics
 
@@ -119,7 +133,7 @@ Settings also cover mouse sensitivity, invert Y, FOV, graphics quality (Low / Me
 - Lensing uses the Schwarzschild metric for the visuals, while the time dilation uses Kerr. The black hole's on-screen distance is artistic.
 - The black hole's tidal perturbation on local orbits is ignored. Each planet is the only gravitating body in its mission.
 - Debris pieces are point masses on Keplerian paths that only collide with the Kestrel.
-- CASE-9's voice uses the browser's speech synthesis where available; subtitles always show.
+- CASE-9's voice uses the browser's speech synthesis, so its quality depends on your system. Edge's "Natural" voices and Chrome's Google voices sound best; subtitles always show.
 
 ## Code layout
 

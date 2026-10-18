@@ -51,6 +51,7 @@ export class Subtitles {
   expireOldest() { const a = this.active.shift(); if (a) a.el.remove(); }
 
   update(dt) {
+    if (this.game.cardOpen) return;   // hold dialogue until the controls card is dismissed
     for (const a of this.active) {
       a.t += dt;
       if (a.t > a.dur && !a.fading) { a.fading = true; a.el.classList.add('fade'); }

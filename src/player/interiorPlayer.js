@@ -126,7 +126,7 @@ export class InteriorPlayer {
     this.syncKestrelInteracts();
     this.glide = null;
     if (where === 'bridge' || where === 'bridgeConsole' || where === 'airlock' || where === 'ring') {
-      const s = where === 'bridge' ? 9.0 : where === 'bridgeConsole' ? 15.6 : where === 'airlock' ? SPOKE_S - 2.5 : opts.s ?? 30;
+      const s = where === 'bridge' ? 12.0 : where === 'bridgeConsole' ? 5.3 : where === 'airlock' ? SPOKE_S - 2.5 : opts.s ?? 30;
       toStation(s, 0.02, opts.z ?? 0, W.pos);
       W.vel.set(0, 0, 0);
       const t = new Vector3(-Math.sin(s / R), Math.cos(s / R), 0);
@@ -303,6 +303,7 @@ export class InteriorPlayer {
       const r = this.ladderRadial();
       const p = this.ladderBodyPos(new Vector3()).addScaledVector(r, -0.6);
       this.toFloatAt(p, new Vector3(0, 0, 1), this.hubUp(), r.clone().multiplyScalar(-0.2));
+      this.ladderTopAt = performance.now();
     }
   }
   ladderBodyPos(out) {
@@ -326,6 +327,7 @@ export class InteriorPlayer {
       W.vel.set(0, 0, 0);
       W.forward.copy(t).negate();
       W.up.copy(r).negate();
+      this.ladderOffAt = performance.now();
     } else {
       const F = this.floater;
       this.env.gravity(F.pos, _v);
@@ -382,9 +384,8 @@ export class InteriorPlayer {
       }
     } else if (this.mode === 'ladder') {
       const L2 = this.ladder;
-      ui.prompt('W / S', L2.rho > R - 4 ? 'Climb up · S step off at the bottom' : 'Climb up toward the hub  ·  down to the ring');
-    } else if (this.mode === 'walk' && this.nearLadder(p) < 1.2 && this.walker.forward.dot(this.ladderTangent()) > 0.3) ui.prompt('W', 'Walk into the ladder to climb');
-    else ui.prompt(null);
+      ui.prompt('S', L2.rho > R - 4 ? 'Keep holding S to step off  ·  W climbs back up' : 'Climb down to the ring  ·  W climbs up to the hub');
+    } else ui.prompt(null);
   }
 
   // current guidance target for the HUD (station frame), set by missions
