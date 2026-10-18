@@ -41,6 +41,7 @@ export class DockingDirector {
     mission.on('dock:softCapture', (e) => this.onSoftCapture(e));
     mission.on('dock:latch', (e) => { g.audio?.latch(e.i); if (e.i === 1) this.m.say('case', 'Latches engaging.', { key: 'latches', cooldown: 20 }); });
     mission.on('dock:hardDock', (e) => this.onHardDock(e));
+    mission.on('dock:softFail', () => { this.m.say('case', 'Capture ring lost you. Back off and try again.', { priority: true }); g.audio?.blip('bad'); });
     mission.on('dock:pressurised', () => { this.m.say('case', 'Pressure equal. The hatch is yours.'); g.audio?.blip('good'); this.opts.onPressurised?.(); });
     mission.on('dock:bounce', (e) => this.onBounce(e));
     mission.on('dock:impact', (e) => this.onImpact(e));

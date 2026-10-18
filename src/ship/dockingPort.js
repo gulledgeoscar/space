@@ -400,31 +400,79 @@ export class DockingSystem {
     const S = this.station.body, K = this.kestrel.body;
     const r = this.rel;
     const m = this.kestrel.body.mass;
-    const k = m * Math.pow(2 * Math.PI * 0.45, 2), c = 2 * 0.95 * Math.sqrt(k * m);
+    // In the co-rotating frame a tilted or displaced Kestrel feels a
+    // centrifugal "negative stiffness" ~ m w^2, so the capture mechanism's
+    // stiffness has to grow with the spin rate to stay stable (65 RPM:
+    // w^2 = 46 s^-2 against a 0.45 Hz spring's 8 s^-2).
+    const ws2 = Math.pow(S.omega.dot(this.rel.axisWorld), 2);
+    const wn2 = Math.pow(2 * Math.PI * 0.45, 2) + 2 * ws2;
+    const k = m * wn2, c = 2 * 0.95 * Math.sqrt(k * m);
     // retract the capture ring: target axial position goes to seated
     const zT = Math.max(-0.05, 0.02 - this.t * 0.04);
     const ex = _a.set(r.pos.x, r.pos.y, r.pos.z - zT);
-    const F = new Vector3(-k * ex.x - c * r.vel.x, -k * ex.y - c * r.vel.y, -k * ex.z - c * r.vel.z).applyQuaternion(S.quat);
+    // damp the rate of the error as seen in the rotating port frame, i.e.
+    // velocity relative to the station material at the ring. Damping the
+    // inertial difference instead leaves a circulatory force c*w x e that,
+    // at 65 RPM, is ~4x the spring and spirals the capture apart.
+    // Springs are explicit; dampers are applied as implicit impulses
+    // (v' = v / (1 + c w dt) per axis), which stay stable however stiff the
+    // mechanism gets. The translational damper acts on velocity relative to
+    // the station material at the ring, i.e. the error rate in the rotating
+    // port frame - damping the inertial difference would leave a circulatory
+    // force c*w x e that spirals a 65 RPM capture apart.
     const pk = this.kestrel.dockPoint(new Vector3());
+    const F = new Vector3(-k * ex.x, -k * ex.y, -k * ex.z).applyQuaternion(S.quat);
     K.applyForce(F, pk);
     S.applyForce(F.clone().negate(), pk);
+    const rK = new Vector3().subVectors(pk, K.pos), rS = new Vector3().subVectors(pk, S.pos);
+    const n = new Vector3(), J = new Vector3(), vk = new Vector3(), vs = new Vector3();
+    for (let i = 0; i < 3; i++) {
+      n.set(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyQuaternion(S.quat);
+      const vn = K.velocityAt(pk, vk).sub(S.velocityAt(pk, vs)).dot(n);
+      const w = K.effInvMass(rK, n) + S.effInvMass(rS, n);
+      const jn = -vn * (1 - 1 / (1 + c * w * dt)) / w;
+      J.copy(n).multiplyScalar(jn);
+      K.applyImpulse(J, pk);
+      S.applyImpulse(J.negate(), pk);
+    }
     // attitude: drive q_rel -> roll index
     const qTarget = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), this.capturedRoll);
     const qRel = new Quaternion().copy(S.quat).invert().multiply(K.quat);
     const qErr = qTarget.clone().invert().multiply(qRel);
     if (qErr.w < 0) { qErr.x *= -1; qErr.y *= -1; qErr.z *= -1; qErr.w *= -1; }
     const eAng = new Vector3(qErr.x, qErr.y, qErr.z).multiplyScalar(2).applyQuaternion(qTarget).applyQuaternion(S.quat);
-    const Ik = Math.max(K.inertiaBody.elements[0], K.inertiaBody.elements[4], K.inertiaBody.elements[8]);
-    const kr = Ik * Math.pow(2 * Math.PI * 0.5, 2), cr = 2 * 0.95 * Math.sqrt(kr * Ik);
-    const wRel = new Vector3().subVectors(K.omega, S.omega);
-    const T = eAng.multiplyScalar(-kr).addScaledVector(wRel, -cr);
+    // per-axis gains in the Kestrel body frame. Pitch/yaw pivot about the
+    // ring, not the CoM: their effective inertia is I + m L^2, and spin adds a
+    // centrifugal negative stiffness of about that times w^2.
+    const Ie = K.inertiaBody.elements, wa2 = Math.pow(2 * Math.PI * 0.5, 2) + 2 * ws2;
+    const lever2 = pk.distanceToSquared(K.pos) * m;
+    const T = new Vector3(), ax = new Vector3(), wr = new Vector3(), Lj = new Vector3();
+    for (let i = 0; i < 3; i++) {
+      const I = i === 2 ? Ie[8] : Ie[i * 4] + lever2;
+      const kr = I * wa2, cr = 2 * 0.95 * Math.sqrt(kr * I);
+      ax.set(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyQuaternion(K.quat);
+      T.addScaledVector(ax, -kr * eAng.dot(ax));
+      // implicit angular damping impulse about this axis
+      const wn = wr.subVectors(K.omega, S.omega).dot(ax);
+      const winv = Lj.copy(ax).applyMatrix3(K.invIWorld).dot(ax) + Lj.copy(ax).applyMatrix3(S.invIWorld).dot(ax);
+      const jn = -wn * (1 - 1 / (1 + cr * winv * dt)) / winv;
+      K.L.addScaledVector(ax, jn); K.omega.copy(K.L).applyMatrix3(K.invIWorld);
+      S.L.addScaledVector(ax, -jn); S.omega.copy(S.L).applyMatrix3(S.invIWorld);
+    }
     K.applyTorque(T);
     S.applyTorque(T.clone().negate());
     const seated = r.pos.z < -0.03 && r.lateral < 0.01 && r.tilt < 0.25 && Math.abs(r.rollRate) < 0.004;
-    if (this.state === 'soft' && (seated || this.t > 7)) {
+    const nearly = r.lateral < 0.04 && r.tilt < 1.5;
+    if (this.state === 'soft' && (seated || (this.t > 7 && nearly))) {
       this.state = 'latching';
       this.latchT = 0;
       this.emit('latchStart');
+    }
+    // capture ring could not hold the Kestrel: let go rather than latch it crooked
+    if (this.state === 'soft' && (r.lateral > 0.35 || r.tilt > 12 || this.t > 20)) {
+      this.state = 'free';
+      this.emit('softFail', { lateral: r.lateral, tilt: r.tilt });
+      return;
     }
     if (this.state === 'latching') {
       this.latchT += dt;
