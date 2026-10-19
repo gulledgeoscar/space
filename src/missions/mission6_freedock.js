@@ -54,10 +54,14 @@ export class FreeDockMission extends Mission {
     this.run((function* () {
       yield { real: 1.0 };
       yield* self.line('case', `Free dock. ${planet.name} orbit. The Meridian is turning at ${spinRpm.toFixed(1)} RPM, ${range.toFixed(0)} metres out. You have ${K.fuel.toFixed(0)} kilograms of propellant.`);
-      yield* self.line('case', settings.difficulty.helpers ? 'K kills rotation relative to the port, L kills relative velocity. The clock is running.' : 'No helpers. The clock is running.');
+      yield* self.line('case', settings.difficulty.helpers ? 'W to go, S to slow, Space to stop. I handle the lining up. The clock is running.' : 'No helpers. The clock is running.');
     })());
   }
-  controlsNote() { return 'Slow down near the station, centre on the port, and close in at under ' + settings.difficulty.closing.toFixed(2) + ' m/s.' + (settings.difficulty.helpers ? ' <kbd>K</kbd> and <kbd>L</kbd> hold you steady.' : ''); }
+  controlsNote() {
+    return settings.difficulty.helpers
+      ? 'Hold <kbd>W</kbd> to fly toward the port, <kbd>S</kbd> to slow, <kbd>Space</kbd> to stop. The computer lines you up and slows you for capture.'
+      : 'Slow down near the station, centre on the port, and close in at under ' + settings.difficulty.closing.toFixed(2) + ' m/s.';
+  }
   update(simDt, realDt) {
     super.update(simDt, realDt);
     this.director.update(realDt);

@@ -28,7 +28,7 @@ export const QUALITY = {
 // Capture tolerances for each docking difficulty. Realistic is the spec:
 // closing speed < 0.1 m/s and alignment within ~1 degree.
 export const DIFFICULTY = {
-  assisted: { label: 'Assisted', closing: 0.15, tilt: 2.5, lateral: 0.18, lateralVel: 0.4, rollRate: 0.09, roll: 12, helpers: true, trajectory: true, guidance: true, expertCam: false },
+  assisted: { label: 'Simple', closing: 0.15, tilt: 2.5, lateral: 0.18, lateralVel: 0.4, rollRate: 0.09, roll: 12, helpers: true, trajectory: true, guidance: true, expertCam: false },
   realistic: { label: 'Realistic', closing: 0.10, tilt: 1.0, lateral: 0.12, lateralVel: 0.25, rollRate: 0.05, roll: 8, helpers: false, trajectory: true, guidance: false, expertCam: false },
   expert: { label: 'Expert', closing: 0.07, tilt: 0.75, lateral: 0.08, lateralVel: 0.18, rollRate: 0.035, roll: 5, helpers: false, trajectory: false, guidance: false, expertCam: true },
 };

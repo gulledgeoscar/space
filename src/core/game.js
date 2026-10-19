@@ -426,6 +426,8 @@ export class Game {
     this.sun.position.copy(sunDir).multiplyScalar(150).add(this.shadowFocus());
     this.sun.target.position.copy(this.shadowFocus());
     this.sun.target.updateMatrixWorld();
+    // overcast worlds dim the direct sun near the ground
+    this.sun.intensity = 3.2 * (this.surface?.near && this.surface.sunScale ? this.surface.sunScale : 1);
     this.updateTrajectory(dt);
     this.mission?.visuals?.(dt, origin);
     this.interior?.visuals?.(dt, origin);

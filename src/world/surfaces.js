@@ -119,6 +119,7 @@ export class Surface {
       this.sceneFog.color.copy(this.fogColor);
       this.group.visible = true;
     } else { scene.fog = null; this.group.visible = alt < 120000; }
+    this.near = alt < 40000;
   }
   fogDensity(alt) { return 0.00003 * Math.exp(-alt / 8000); }
 
@@ -297,23 +298,61 @@ export class OceanSurface extends Surface {
 
 // ---------------------------------------------------------------------------
 // Skadi: ice plains and pressure ridges, fog, snow and frozen clouds.
+// Snow with fine detail near the eye: wind ripples, footprint-sized lumps
+// and glittering crust, procedurally in the fragment shader (fades out with
+// distance so the far plain stays smooth).
+function snowMaterial() {
+  const m = new MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.0 });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSnowP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSnowP = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSnowP;\n' + NOISE_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float dist = length(vViewPosition);
+          float near = 1.0 - smoothstep(30.0, 260.0, dist);
+          vec2 q = vSnowP.xz;
+          float ripple = sin(q.x * 1.9 + q.y * 0.7 + snoise(vec3(q * 0.25, 1.0)) * 3.0) * 0.5 + 0.5;
+          float lumps = snoise(vec3(q * 0.9, 3.0)) * 0.5 + 0.5;
+          float big = snoise(vec3(q * 0.06, 5.0)) * 0.5 + 0.5;
+          float k = mix(1.0, 0.78 + 0.16 * ripple + 0.12 * lumps, near) * (0.88 + 0.2 * big);
+          diffuseColor.rgb *= k;
+        }`);
+  };
+  return m;
+}
+
 export class IceSurface extends Surface {
-  constructor(game, planet, siteNormal) {
+  constructor(game, planet, siteNormal, { clear = [] } = {}) {
     super(game, planet, { patch: 26000 });
     this.nFixed.copy(siteNormal).normalize();
     this.updateBasis(game.world.time);
-    this.fogColor.setRGB(0.72, 0.78, 0.85);
+    this.clear = clear;     // [{ x, z, r }] kept free of props (the Wren)
+    // overcast: a dimmer sun through the haze, and a grey-blue fog rather
+    // than a white-out
+    this.sunScale = 0.42;
+    this.fogColor.setRGB(0.36, 0.42, 0.5);
     const ground = new Mesh(this.terrainGeometry((x, z) => {
       const h = this.height(x, z);
-      const r = 0.82 + fbm2(x * 0.004, z * 0.004, 3) * 0.12;
-      const blue = Math.max(0, Math.min(1, (h - 2) / 40));
-      return [r * (0.92 - blue * 0.3), r * (0.95 - blue * 0.15), r];
-    }), new MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0 }));
+      // wind-packed snow (blue-grey), with drifts, bare blue ice in the
+      // hollows and dark rock showing on the ridge crests
+      const drift = fbm2(x * 0.004, z * 0.004, 3);
+      const sast = fbm2(x * 0.09 + z * 0.02, z * 0.09, 2);   // sastrugi streaks
+      let r = 0.42 + drift * 0.14 + sast * 0.08, gc = r * 1.03, bc = r * 1.14;
+      const iceK = Math.max(0, Math.min(1, (fbm2(x * 0.0021 + 7, z * 0.0021, 3) - 0.55) * 5));
+      r += (0.3 - r) * iceK; gc += (0.4 - gc) * iceK; bc += (0.52 - bc) * iceK;
+      const e = 2;
+      const slope = Math.hypot(this.height(x + e, z) - this.height(x - e, z), this.height(x, z + e) - this.height(x, z - e)) / (2 * e);
+      const rockK = Math.max(0, Math.min(1, (slope - 0.32) * 4)) * Math.max(0, Math.min(1, (h - 8) / 12));
+      r += (0.16 - r) * rockK; gc += (0.16 - gc) * rockK; bc += (0.18 - bc) * rockK;
+      return [r, gc, bc];
+    }), snowMaterial());
     ground.receiveShadow = true;
     this.group.add(ground);
     // frozen clouds: sculpted ice masses hanging in the thin air
-    const M = materials();
-    const ice = new MeshStandardMaterial({ color: 0xdfe9f2, roughness: 0.35, metalness: 0.05, transparent: true, opacity: 0.94 });
+    const ice = new MeshStandardMaterial({ color: 0x9fb4c8, roughness: 0.35, metalness: 0.05, transparent: true, opacity: 0.94 });
     const b = new GeoBatch();
     for (let c = 0; c < 18; c++) {
       const a = Math.random() * 6.28, r = 900 + Math.random() * 9000;
@@ -322,18 +361,111 @@ export class IceSurface extends Surface {
     }
     const clouds = b.build({ castShadow: true });
     this.group.add(clouds);
+    this.buildLandmarks();
     // snow around the camera
     const N = 4000;
     const pos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 120; pos[i * 3 + 1] = Math.random() * 60; pos[i * 3 + 2] = (Math.random() - 0.5) * 120; }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-    this.snow = new Points(g, new PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.snow = new Points(g, new PointsMaterial({ color: 0xdfe6ee, size: 0.1, transparent: true, opacity: 0.75, depthWrite: false }));
     this.snow.frustumCulled = false;
     this.group.add(this.snow);
     this.snowPos = pos;
     this.wind = new Vector3(4, -1.5, 1.5);
   }
+
+  // Things to judge distance and height by: dark rock outcrops and boulders,
+  // blue ice spires, Vance's survey stakes with orange flags, a ring of
+  // beacon masts with blinking lights, and his old supply dump.
+  buildLandmarks() {
+    const rock = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.92, metalness: 0.0, flatShading: true });
+    const rockSnow = new MeshStandardMaterial({ color: 0x8e9aa8, roughness: 0.8, flatShading: true });
+    const spire = new MeshStandardMaterial({ color: 0x5f86a8, roughness: 0.25, metalness: 0.05, emissive: 0x0c1a26, flatShading: true });
+    const pole = new MeshStandardMaterial({ color: 0x2c2f33, roughness: 0.6, metalness: 0.6 });
+    const flag = new MeshStandardMaterial({ color: 0xff5a14, roughness: 0.6, emissive: 0x3a1000, side: DoubleSide });
+    const crate = new MeshStandardMaterial({ color: 0x6b7480, roughness: 0.7, metalness: 0.3 });
+    const crateBand = new MeshStandardMaterial({ color: 0xd8641e, roughness: 0.6 });
+    const B = new GeoBatch();
+    this.colliders = [];
+    const ground = (x, z) => this.height(x, z);
+    const blocked = (x, z, pad = 0) => this.clear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + pad);
+    // rocks: outcrops of a few stretched, half-buried blocks
+    for (let i = 0; i < 260; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = i < 90 ? 25 + Math.random() * 380 : 300 + Math.pow(Math.random(), 1.4) * 5000;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const size = r < 300 ? 0.4 + Math.random() * 1.3 : (1.5 + Math.random() * 9) * (Math.random() < 0.1 ? 2.2 : 1);
+      if (blocked(x, z, size * 3)) continue;
+      const n = 1 + Math.floor(Math.random() * 4);
+      for (let k = 0; k < n; k++) {
+        const s = size * (0.5 + Math.random() * 0.6);
+        const px = x + (Math.random() - 0.5) * size * 2.2, pz = z + (Math.random() - 0.5) * size * 2.2;
+        const py = ground(px, pz) - s * 0.25;
+        const sc = new Vector3(1 + Math.random() * 0.6, 0.55 + Math.random() * 0.7, 1 + Math.random() * 0.5);
+        const rot = { x: Math.random() * 0.5, y: Math.random() * 6.28, z: Math.random() * 0.5 };
+        B.add(new IcosahedronGeometry(s, 0), rock, new Vector3(px, py, pz), rot, sc);
+        // a snow cap on the bigger ones
+        if (s > 1.2) B.add(new IcosahedronGeometry(s * 0.8, 0), rockSnow, new Vector3(px, py + s * sc.y * 0.42, pz), rot, new Vector3(sc.x, sc.y * 0.35, sc.z));
+        if (r < 700) this.colliders.push({ x: px, z: pz, r: s * Math.max(sc.x, sc.z) * 0.75, top: py + s * sc.y * 0.9 });
+      }
+    }
+    // ice spires: tall leaning blue cones, in clusters, out on the plain
+    for (let c = 0; c < 24; c++) {
+      const a = Math.random() * Math.PI * 2, r = 350 + Math.random() * 4500;
+      const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+      const m = 2 + Math.floor(Math.random() * 5);
+      for (let k = 0; k < m; k++) {
+        const h = 8 + Math.random() * 38, w = h * (0.12 + Math.random() * 0.1);
+        const px = cx + (Math.random() - 0.5) * 40, pz = cz + (Math.random() - 0.5) * 40;
+        B.add(new ConeGeometry(w, h, 6), spire, new Vector3(px, ground(px, pz) + h * 0.45, pz), { x: (Math.random() - 0.5) * 0.25, y: Math.random() * 6.28, z: (Math.random() - 0.5) * 0.25 });
+      }
+    }
+    // survey stakes: lines of poles with orange flags radiating from the site
+    const stake = (x, z, h = 2.4) => {
+      if (blocked(x, z, 2)) return;
+      const y = ground(x, z);
+      B.add(new CylinderGeometry(0.03, 0.04, h, 6), pole, new Vector3(x, y + h / 2, z));
+      B.add(new PlaneGeometry(0.42, 0.26), flag, new Vector3(x + 0.21, y + h - 0.16, z), { y: Math.random() * 0.6 - 0.3 });
+    };
+    for (let l = 0; l < 6; l++) {
+      const a = (l / 6) * Math.PI * 2 + Math.random() * 0.4;
+      for (let d = 30; d < 900; d += 25) stake(Math.cos(a) * d + Math.sin(d * 0.01) * 4, Math.sin(a) * d);
+    }
+    // beacon masts in a ring around the site, each with a blinking light
+    this.beacons = [];
+    const lampMat = new MeshBasicMaterial({ color: 0xff3020 });
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.2, r = 420 + (i % 2) * 260;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r, y = ground(x, z);
+      B.add(new CylinderGeometry(0.12, 0.2, 12, 8), pole, new Vector3(x, y + 6, z));
+      for (const [dx, dz] of [[1, 0], [-0.5, 0.87], [-0.5, -0.87]]) B.add(new CylinderGeometry(0.02, 0.02, 6.6, 4), pole, new Vector3(x + dx * 1.4, y + 3, z + dz * 1.4), { x: dz * 0.22, z: -dx * 0.22 });
+      const lamp = new Mesh(new SphereGeometry(0.28, 10, 8), lampMat);
+      lamp.position.set(x, y + 12.3, z);
+      this.group.add(lamp);
+      this.beacons.push(lamp);
+      if (r < 700) this.colliders.push({ x, z, r: 0.5, top: y + 12 });
+    }
+    // Vance's supply dump: crates, drums and a buried sledge
+    let da = Math.random() * Math.PI * 2;
+    for (let t = 0; t < 8 && blocked(Math.cos(da) * 60, Math.sin(da) * 60, 15); t++) da += 0.8;
+    const dx0 = Math.cos(da) * 60, dz0 = Math.sin(da) * 60;
+    for (let i = 0; i < 9; i++) {
+      const x = dx0 + (Math.random() - 0.5) * 9, z = dz0 + (Math.random() - 0.5) * 9, y = ground(x, z);
+      const w = 0.8 + Math.random() * 0.7, h = 0.6 + Math.random() * 0.5;
+      const ry = Math.random() * 6.28;
+      if (i % 3 === 2) B.add(new CylinderGeometry(0.3, 0.3, 0.9, 12), crateBand, new Vector3(x, y + 0.42, z));
+      else {
+        B.add(new BoxGeometry(w, h, w * 0.8), crate, new Vector3(x, y + h / 2 - 0.08, z), { y: ry });
+        B.add(new BoxGeometry(w + 0.02, 0.08, w * 0.8 + 0.02), crateBand, new Vector3(x, y + h * 0.7, z), { y: ry });
+      }
+      this.colliders.push({ x, z, r: w * 0.55, top: y + h });
+    }
+    B.add(new BoxGeometry(1.4, 0.3, 3.2), crate, new Vector3(dx0 + 5, ground(dx0 + 5, dz0) + 0.05, dz0), { y: da, z: 0.12 });
+    this.group.add(B.build({ castShadow: true }));
+    this.blinkT = 0;
+  }
+
   height(x, z) {
     const ridges = Math.pow(1 - Math.abs(vnoise(x * 0.0016, z * 0.0016) * 2 - 1), 4) * 38;
     const roll = (fbm2(x * 0.0006, z * 0.0006, 4) - 0.5) * 60;
@@ -342,7 +474,7 @@ export class IceSurface extends Surface {
     const flat = Math.min(1, Math.max(0, (r - 250) / 900));
     return (roll + ridges) * flat + (fbm2(x * 0.05, z * 0.05, 2) - 0.5) * 0.4;
   }
-  fogDensity(alt) { return 0.00028 * Math.exp(-alt / 3000) + 0.000015; }
+  fogDensity(alt) { return 0.0002 * Math.exp(-alt / 3000) + 0.000012; }
   update(dt, origin) {
     super.update(dt, origin);
     // snow box follows the camera in local coordinates
@@ -355,6 +487,8 @@ export class IceSurface extends Surface {
       if (p[i + 1] - cam.y < -10) p[i + 1] += 60; if (p[i + 1] - cam.y > 50) p[i + 1] -= 60;
     }
     this.snow.geometry.attributes.position.needsUpdate = true;
-    this.snow.visible = Math.abs(cam.y) < 3000;
+    this.snow.visible = Math.abs(cam.y) < 3000;    // beacons blink, out of step with each other
+    this.blinkT += dt;
+    this.beacons.forEach((l, i) => { l.visible = ((this.blinkT + i * 0.37) % 1.6) < 0.25; });
   }
 }

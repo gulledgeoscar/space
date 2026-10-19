@@ -8,7 +8,7 @@ import { Vector3, Quaternion, Matrix4, Group, Mesh, CylinderGeometry, SphereGeom
 import { Mission } from './missionBase.js';
 import { DockingDirector } from './dockingDirector.js';
 import { setupDocked, circularState, orientStation, placeKestrelLvlh, pointKestrel } from './scenario.js';
-import { ascentCue, surfaceState, stopDistance, LandingAssist, predictedTouchdown } from './flightAids.js';
+import { ascentCue, surfaceState, stopDistance, LandingAssist, predictedTouchdown, deorbitBurn } from './flightAids.js';
 import { orbitCamera, stationCamera } from './cinematics.js';
 import { lvlhBasis, stateToElements } from '../physics/orbital.js';
 import { SKADI, PELAGIA, pelagiaTides } from '../physics/bodies.js';
@@ -63,6 +63,8 @@ export class OceanMission extends Mission {
 
   allowExit() { return this.phase === 'docked' || this.phase === 'walkback'; }
   allowBoard() { return this.phase === 'walk'; }
+  // the flight computer's docking mode only on the way back in
+  wantsDocking() { return this.phase === 'redock'; }
   surfaceTarget() {
     if (this.phase !== 'surface' || !this.beaconLocal) return null;
     return this.hasBeacon ? { pos: this.kestrelLocal.clone(), label: 'KESTREL' } : { pos: this.beaconLocal.clone().add(new Vector3(0, 1, 0)), label: 'BEACON' };
@@ -122,9 +124,9 @@ export class OceanMission extends Mission {
     const self = this;
     this.run((function* () {
       yield { real: 1.5 };
-      yield* self.line('case', 'We are rolling at the station\'s four point seven RPM. Kill it' + (settings.difficulty.helpers ? ' — K' : '') + '. Then back away along the axis with S. Watch the predicted path: we are in Skadi orbit too, so the drift is real.');
+      yield* self.line('case', settings.difficulty.helpers ? 'Free. I have stopped our roll. Hold S to back away from her.' : 'We are rolling at the station\'s four point seven RPM. Kill it. Then back away along the axis with S. Watch the predicted path: we are in Skadi orbit too, so the drift is real.');
       yield () => self.world.docking.rel.range > 120;
-      yield* self.line('case', 'One hundred twenty metres. Clear for the main engine. Point prograde' + (settings.difficulty.helpers ? ' (1)' : '') + ' and burn thirty-five metres per second.');
+      yield* self.line('case', settings.difficulty.helpers ? 'One hundred twenty metres. Clear for the main engine. Hold W: I will point prograde and burn the thirty-five metres per second.' : 'One hundred twenty metres. Clear for the main engine. Point prograde and burn thirty-five metres per second.');
       self.phase = 'depart';
       self.dv0 = self.world.kestrel.dvUsed;
     })());
@@ -184,8 +186,13 @@ export class OceanMission extends Mission {
       yield { real: 1.5 };
       yield* self.lines([
         ['case', `Pelagia orbit, one hundred ten kilometres. Lethe fills half the sky. From here on, one second of ours is ${formatDuration(ORBITS.pelagia.factor)} of Earth's.`],
-        ['case', 'Deorbit: point retrograde' + (settings.difficulty.helpers ? ' (2)' : '') + ' and burn about one hundred twenty metres per second. Then belly into the air and let it slow us. Gear with G.'],
-        ['case', settings.difficulty.helpers ? 'Below ten kilometres, H engages auto-land. It flies the same engine you would — just without the panic.' : 'Watch the stop-distance readout. Burn when it matches your height.'],
+        ...(settings.difficulty.helpers ? [
+          ['case', 'Deorbit burn: hold W. I will turn us retrograde and cut the engine when we are low enough.'],
+          ['case', 'After that, I fly the landing. H hands you the controls if you want them.'],
+        ] : [
+          ['case', 'Deorbit: point retrograde and burn about one hundred twenty metres per second. Then belly into the air and let it slow us. Gear with G.'],
+          ['case', 'Watch the stop-distance readout. Burn when it matches your height.'],
+        ]),
       ]);
     })());
   }
@@ -433,9 +440,15 @@ export class OceanMission extends Mission {
       const dv = W.kestrel.dvUsed - this.dv0;
       const pro = K.body.vel.clone().sub(W.meridian.body.vel);
       hud.phaseSub = `departure Δv ${dv.toFixed(1)} / 35 m/s · window ${formatDuration(this.windowEnd - W.time)}`;
-      hud.setCue('burn', { dir: K.body.vel.clone().normalize(), icon: 'burn', cls: 'green', label: `DEPARTURE ${Math.max(0, 35 - dv).toFixed(1)} m/s`, clamp: true });
-      g.pilot.burnTarget = { dir: K.body.vel.clone().normalize() };
-      if (dv >= 35) { hud.setCue('burn', null); g.extraWarnings = []; hud.phaseText = null; hud.phaseSub = null; this.transferOut(); }
+      // prograde, angled a little away from the station so the burn never
+      // carries us back past her
+      const pg = K.body.vel.clone().normalize();
+      const away = K.body.pos.clone().sub(W.meridian.body.pos);
+      away.addScaledVector(pg, -away.dot(pg));
+      const depDir = pg.clone().addScaledVector(away.lengthSq() > 1 ? away.normalize() : away, 0.45).normalize();
+      hud.setCue('burn', { dir: depDir, icon: 'burn', cls: 'green', label: `DEPARTURE ${Math.max(0, 35 - dv).toFixed(1)} m/s`, clamp: true });
+      g.pilot.burnTarget = { dir: depDir, dv: Math.max(0, 35 - dv), now: true, terminal: true, label: 'DEPARTURE' };
+      if (dv >= 34.7) { hud.setCue('burn', null); g.extraWarnings = []; hud.phaseText = null; hud.phaseSub = null; this.transferOut(); }
       void pro;
     }
     if (this.phase === 'deorbit' || this.phase === 'entry') this.updateDescent(realDt);
@@ -450,10 +463,17 @@ export class OceanMission extends Mission {
     const st = surfaceState(W, this.surface);
     const stop = stopDistance(W, st);
     g.ui.hud.phaseText = this.phase === 'deorbit' ? 'DEORBIT' : 'ENTRY & LANDING';
+    if (this.phase === 'deorbit' && settings.difficulty.helpers) g.pilot.burnTarget = deorbitBurn(W, PELAGIA, 35e3);
+    else if (g.pilot.burnTarget?.label === 'DEORBIT') g.pilot.burnTarget = null;
     g.ui.hud.phaseSub = `AGL ${(st.agl / 1000).toFixed(st.agl < 2000 ? 2 : 1)} km · v↓ ${(-st.vs).toFixed(0)} m/s · v→ ${st.vh.toFixed(0)} m/s · stop ${stop.toFixed(0)} m${this.landing.on ? ' · AUTO-LAND' : ''}`;
     const el = stateToElements(K.body.pos, K.body.vel, PELAGIA.gm);
     if (this.phase === 'deorbit' && el.rp - PELAGIA.radius < 40e3) { this.phase = 'entry'; this.say('case', 'Periapsis inside the atmosphere. We are committed. Belly forward — more drag, less heat per square metre.'); }
     if (!this.surface && st.agl < 9000) this.makeSite();
+    // Simple flight: the computer takes the landing (H hands it back)
+    if (this.surface && settings.difficulty.helpers && !this.landing.on && !this.landing.declined && st.agl < 6000 && st.vs < -5) {
+      this.landing.toggle();
+      this.say('case', 'Auto-land engaged. I will put us down. Press H if you want the controls.', { key: 'autoland', cooldown: 60 });
+    }
     if (this.surface) this.landing.update(1 / 60, this.surface);
     if (K.thermal.T > 1400 && !this.hotTold) { this.hotTold = true; this.say('case', `Hull at ${K.thermal.T.toFixed(0)} kelvin. That orange glow is us.`); }
     if (st.agl < stop * 1.3 && st.agl < 4000 && -st.vs > 20 && !this.landing.on) this.game.extraWarnings = [['BURN NOW', '']];
@@ -511,7 +531,7 @@ export class OceanMission extends Mission {
   updateAscent() {
     const g = this.game, W = this.world, K = W.kestrel;
     const cue = ascentCue(W, PELAGIA, 110e3);
-    g.pilot.burnTarget = { dir: cue.dir };
+    g.pilot.burnTarget = { dir: cue.dir, cut: cue.apAlt > 110e3 };
     g.ui.hud.setCue('asc', { dir: cue.dir, icon: 'cue', cls: 'green', label: `PITCH ${cue.e.toFixed(0)}°`, clamp: true });
     g.ui.hud.phaseText = 'ASCENT';
     g.ui.hud.phaseSub = `Ap ${(cue.apAlt / 1000).toFixed(1)} km · Δv ${K.deltaVMain().toFixed(0)} m/s · q ${(K.q / 1000).toFixed(1)} kPa`;

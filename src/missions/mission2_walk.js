@@ -9,7 +9,7 @@ import { setupDocked } from './scenario.js';
 import { stationCamera } from './cinematics.js';
 import { EARTH } from '../physics/bodies.js';
 import { toStation } from '../ship/interiorLayout.js';
-import { buildAstronaut } from '../player/astronaut.js';
+import { buildAstronaut, faceAlong } from '../player/astronaut.js';
 import { ORBITS } from '../physics/timeDilation.js';
 
 // Okafor's station chair on the bridge (arc position, m)
@@ -22,8 +22,7 @@ export function placeCrew(game, name, s, h, z, facing = 1, pose = 'sit', suit = 
   toStation(s, h, z, a.root.position);
   const up = a.root.position.clone().setZ(0).normalize().negate();
   const fwd = new Vector3(-Math.sin(s / 40), Math.cos(s / 40), 0).multiplyScalar(facing);
-  a.root.up.copy(up);
-  a.root.lookAt(a.root.position.clone().sub(fwd));
+  faceAlong(a.root, fwd, up);
   a.animate({ mode: pose, dt: 0 });
   ip.interior.group.add(a.root);
   game.extraMeshes.push(a.root);

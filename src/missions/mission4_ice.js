@@ -9,14 +9,14 @@ import { Vector3, Quaternion, Matrix4 } from 'three';
 import { Mission } from './missionBase.js';
 import { DockingDirector } from './dockingDirector.js';
 import { setupDocked, circularState, orientStation, pointKestrel } from './scenario.js';
-import { ascentCue, surfaceState, stopDistance, LandingAssist, predictedTouchdown } from './flightAids.js';
+import { ascentCue, surfaceState, stopDistance, LandingAssist, predictedTouchdown, deorbitBurn } from './flightAids.js';
 import { orbitCamera } from './cinematics.js';
 import { lvlhBasis, stateToElements } from '../physics/orbital.js';
 import { SKADI } from '../physics/bodies.js';
 import { formatDuration } from '../physics/timeDilation.js';
 import { IceSurface } from '../world/surfaces.js';
 import { SurfacePlayer } from '../player/surfacePlayer.js';
-import { buildAstronaut } from '../player/astronaut.js';
+import { buildAstronaut, faceAlong } from '../player/astronaut.js';
 import { buildKestrelModel } from '../ship/kestrelModel.js';
 import { Kestrel } from '../ship/kestrel.js';
 import { DockingSystem } from '../ship/dockingPort.js';
@@ -26,6 +26,7 @@ import { fromRpm, rpm } from '../physics/constants.js';
 import { SKADI_BH } from './mission3_ocean.js';
 import { placeCrew, BRIDGE_CREW_S } from './mission2_walk.js';
 
+const UP_Y = new Vector3(0, 1, 0);
 export const ORBIT_ALT = 300e3;
 
 export class IceMission extends Mission {
@@ -51,6 +52,7 @@ export class IceMission extends Mission {
 
   allowExit() { return false; }
   allowBoard() { return this.phase === 'walk'; }
+  wantsDocking() { return false; }
   // on the surface: where the marker points
   surfaceTarget() {
     if (this.phase !== 'surface') return null;
@@ -88,7 +90,7 @@ export class IceMission extends Mission {
     const g = this.game;
     g.enterFlight('cockpit');
     this.phase = 'cockpit';
-    this.say('case', 'U releases the latches. Then kill our roll and back off. We deorbit from two hundred metres.');
+    this.say('case', settings.difficulty.helpers ? 'U releases the latches. Then hold S to back off. We deorbit from two hundred metres.' : 'U releases the latches. Then kill our roll and back off. We deorbit from two hundred metres.');
   }
 
   onSeparated() {
@@ -98,7 +100,7 @@ export class IceMission extends Mission {
     const self = this;
     this.run((function* () {
       yield () => self.world.docking.rel.range > 200;
-      yield* self.line('case', 'Clear. Deorbit: retrograde' + (settings.difficulty.helpers ? ' (2)' : '') + ', about ninety metres per second. Then belly forward.');
+      yield* self.line('case', settings.difficulty.helpers ? 'Clear. Deorbit burn: hold W. I will turn us retrograde and cut the engine when we are low enough.' : 'Clear. Deorbit: retrograde, about ninety metres per second. Then belly forward.');
       self.phase = 'deorbit';
       self.saveCheckpoint('Deorbit', { snapshot: false });
       self.checkpointStage = 'descent';
@@ -119,20 +121,20 @@ export class IceMission extends Mission {
     this.complete('board');
     this.phase = 'deorbit';
     this.checkpointStage = 'descent';
-    if (!quiet) this.say('case', 'Deorbit: retrograde, about ninety metres per second.');
+    if (!quiet) this.say('case', settings.difficulty.helpers ? 'Deorbit burn: hold W. I will point us and cut the engine.' : 'Deorbit: retrograde, about ninety metres per second.');
   }
 
   // ---------------------------------------------------------------------------
   makeSite() {
     const g = this.game, W = this.world;
     const n = predictedTouchdown(W);
-    this.surface = new IceSurface(g, SKADI, n);
+    // the Wren, landed 170 m away (kept clear of rocks), and Vance beside it
+    const a = Math.random() * 6.28;
+    this.surface = new IceSurface(g, SKADI, n, { clear: [{ x: Math.cos(a) * 170, z: Math.sin(a) * 170, r: 16 }, { x: 0, z: 0, r: 20 }] });
     g.surface = this.surface;
     W.groundFn = (p) => this.surface.ground(p);
     const east = new Vector3(0, 1, 0).cross(n).normalize();
     g.sky.setBlackHole(n.clone().multiplyScalar(0.45).addScaledVector(east, 0.7).add(new Vector3(0, 0.4, 0)).normalize(), SKADI_BH.dist, SKADI_BH.inc);
-    // the Wren, landed 170 m away, and Vance beside it
-    const a = Math.random() * 6.28;
     this.wrenLocal = new Vector3(Math.cos(a) * 170, 0, Math.sin(a) * 170);
     this.wrenLocal.y = this.surface.height(this.wrenLocal.x, this.wrenLocal.z) + 2.28;
     this.wrenModel = buildKestrelModel({ livery: 'wren' });
@@ -357,10 +359,17 @@ export class IceMission extends Mission {
     const st = surfaceState(W, this.surface);
     const stop = stopDistance(W, st);
     g.ui.hud.phaseText = this.phase === 'deorbit' ? 'DEORBIT' : 'ENTRY & LANDING';
+    if (this.phase === 'deorbit' && settings.difficulty.helpers) g.pilot.burnTarget = deorbitBurn(W, SKADI, 25e3);
+    else if (g.pilot.burnTarget?.label === 'DEORBIT') g.pilot.burnTarget = null;
     g.ui.hud.phaseSub = `AGL ${(st.agl / 1000).toFixed(st.agl < 2000 ? 2 : 1)} km · v↓ ${(-st.vs).toFixed(0)} m/s · v→ ${st.vh.toFixed(0)} m/s · stop ${stop.toFixed(0)} m${this.landing.on ? ' · AUTO-LAND' : ''}`;
     const el = stateToElements(K.body.pos, K.body.vel, SKADI.gm);
     if (this.phase === 'deorbit' && el.rp - SKADI.radius < 30e3) { this.phase = 'entry'; this.say('case', 'Entry. Thin air here — we will come in fast and need the engine early.'); }
     if (!this.surface && st.agl < 9000) this.makeSite();
+    // Simple flight: the computer takes the landing (H hands it back)
+    if (this.surface && settings.difficulty.helpers && !this.landing.on && !this.landing.declined && st.agl < 6000 && st.vs < -5) {
+      this.landing.toggle();
+      this.say('case', 'Auto-land engaged. I will put us down. Press H if you want the controls.', { key: 'autoland', cooldown: 60 });
+    }
     if (this.surface) this.landing.update(1 / 60, this.surface);
     g.extraWarnings = st.agl < stop * 1.3 && st.agl < 4000 && -st.vs > 20 && !this.landing.on ? [['BURN NOW', '']] : [];
     if (K.onGround && this.phase !== 'landed') {
@@ -387,7 +396,7 @@ export class IceMission extends Mission {
       } else v.speed = 0;
       if (v.mode === 'idle' && this.player) v.facing.copy(this.player.walker.pos.clone().sub(this.vanceLocal).setY(0).normalize());
       this.vance.root.position.copy(this.vanceLocal);
-      this.vance.root.lookAt(this.vanceLocal.clone().sub(v.facing));
+      faceAlong(this.vance.root, v.facing, UP_Y);
       this.vance.animate({ mode: v.speed > 0.1 ? (v.speed > 2.5 ? 'run' : 'walk') : 'idle', speed: v.speed, dt });
     }
     if (this.o2 !== undefined && this.story === 'betrayed' || this.o2 !== undefined && this.phase === 'surface' && this.canBoard) {
@@ -401,7 +410,7 @@ export class IceMission extends Mission {
   updateAscent() {
     const g = this.game, W = this.world, K = W.kestrel;
     const cue = ascentCue(W, SKADI, ORBIT_ALT);
-    g.pilot.burnTarget = { dir: cue.dir };
+    g.pilot.burnTarget = { dir: cue.dir, cut: cue.apAlt > ORBIT_ALT };
     g.ui.hud.setCue('asc', { dir: cue.dir, icon: 'cue', cls: 'green', label: `PITCH ${cue.e.toFixed(0)}°`, clamp: true });
     g.ui.hud.phaseText = 'ASCENT · RACE THE WREN';
     g.ui.hud.phaseSub = `Ap ${(cue.apAlt / 1000).toFixed(1)} km · Δv ${K.deltaVMain().toFixed(0)} m/s`;

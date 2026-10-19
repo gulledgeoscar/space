@@ -26,6 +26,17 @@ export function ascentCue(world, planet, targetAp, opts = {}) {
   return { dir: east.multiplyScalar(Math.cos(r)).addScaledVector(up, Math.sin(r)).normalize(), e, apAlt, alt, el };
 }
 
+// Simple flight's guided deorbit: a retrograde burn that lowers periapsis
+// to rpAlt. Published as the pilot's burnTarget, so holding W flies it and
+// the engine cuts off once the orbit dips into the air.
+export function deorbitBurn(world, planet, rpAlt) {
+  const K = world.kestrel.body;
+  const r = K.pos.length(), v = K.vel.length();
+  const rp = planet.radius + rpAlt;
+  const vNew = Math.sqrt(planet.gm * (2 / r - 2 / (r + rp)));
+  return { dir: K.vel.clone().normalize().negate(), dv: Math.max(0, v - vNew), now: true, terminal: true, label: 'DEORBIT' };
+}
+
 // Height above the local surface and surface-relative velocity
 export function surfaceState(world, surface) {
   const K = world.kestrel.body;
@@ -53,6 +64,7 @@ export class LandingAssist {
   toggle() {
     if (!settings.difficulty.helpers) { this.game.ui.toast('AUTO-LAND IS AN ASSISTED HELPER'); return; }
     this.on = !this.on;
+    if (!this.on) this.declined = true;
     this.game.emit('assist', this.on ? 'AUTO-LAND' : 'AUTO-LAND OFF');
     this.game.ui.toast(this.on ? 'AUTO-LAND ENGAGED' : 'AUTO-LAND OFF');
     if (!this.on) { this.game.pilot.attMode = null; }

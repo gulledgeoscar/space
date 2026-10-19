@@ -111,12 +111,14 @@ export class RendezvousGuide {
   publish() {
     const g = this.game, a = this.advice;
     const hud = g.ui.hud;
-    if (!a || this.muted) { hud.setCue('burn', null); g.mapNode = null; g.pilot.burnTarget = null; return; }
+    // (in simple flight the computer flies the last few km itself)
+    const handsOff = g.pilot.simple && g.pilot.flightContext() !== 'free';
+    if (!a || this.muted || handsOff) { hud.setCue('burn', null); g.mapNode = null; g.pilot.burnTarget = null; return; }
     const now = a.t <= 1 || a.terminal;
     const show = a.dv > (a.terminal ? 0.25 : 0.8);
     if (show) {
       hud.setCue('burn', { dir: a.dir, icon: 'burn', cls: now ? 'green' : 'amber', label: `${a.label} ${a.dv.toFixed(1)} m/s ${now ? '· BURN NOW' : 'T-' + formatDuration(a.t)}`, clamp: true });
-      g.pilot.burnTarget = { dir: a.dir.clone() };
+      g.pilot.burnTarget = { dir: a.dir.clone(), dv: a.dv, now, t: a.t, terminal: !!a.terminal, label: a.label };
     } else { hud.setCue('burn', null); g.pilot.burnTarget = null; }
     g.mapNode = a.nodePos ? { pos: a.nodePos, label: `${a.label} ${a.dv.toFixed(1)} m/s · T-${formatDuration(a.t)}` } : null;
   }

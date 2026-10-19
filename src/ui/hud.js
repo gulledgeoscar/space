@@ -167,7 +167,35 @@ export class HUD {
     const r = D.rel;
     const docking = W.meridianActive && (r.range < 2500 || D.state !== 'free');
     let status = '', stCls = '';
-    if (docking && D.state === 'free') {
+    // simple flight: what the flight computer is doing, and what W does now
+    const fb = diff.helpers && g.mode === 'flight' ? g.pilot.fbw : null;
+    if (fb && fb.ctx !== 'free' && D.state === 'free') {
+      const spinning = Math.abs(rpm(r.spin)) > 0.3;
+      this.cells([
+        [fmtDist(r.range), 'RANGE'],
+        [`${fmt(r.closing, r.range < 30 ? 2 : 1)} m/s`, 'CLOSING', r.range < 12 && r.closing > diff.closing ? 'bad' : null],
+        [`${fmt(fb.speed, fb.speed < 1 ? 2 : 1)} m/s`, fb.speedSet > fb.vSafe + 0.01 ? 'SPEED · SAFE LIMIT' : 'SPEED SET', fb.speedSet > fb.vSafe + 0.01 ? 'warn' : 'good'],
+        spinning ? [`${fmt(r.spinMatch * 100, 0)}%`, 'SPIN MATCH', r.spinMatch > 0.97 ? 'good' : null] : [`${fmt(r.tilt, 1)}°`, 'ALIGNMENT', r.tilt < diff.tilt ? 'good' : null],
+      ]);
+      if (r.range < 15 && r.pos.z > -0.5 && fb.leg === 'final') {
+        const bad = [];
+        if (fb.holding || r.tilt > diff.tilt || r.lateral > diff.lateral) bad.push('HOLDING SHORT · LINING UP');
+        if (Math.abs(r.rollRate) > diff.rollRate) bad.push('MATCHING SPIN');
+        if (fb.speedSet <= 0.001 && r.closing < 0.01) bad.push('W TO CLOSE IN');
+        status = bad.length ? bad.join(' · ') : 'READY FOR CAPTURE · HOLD STEADY'; stCls = bad.length ? 'warn' : 'good';
+      } else if (fb.speedSet <= 0.001 && Math.abs(r.closing) < 0.05) { status = 'HOLDING · PRESS W TO GO'; stCls = 'good'; }
+      else if (fb.leg !== 'final') status = `AUTOPILOT · ${fb.leg.toUpperCase()}`;
+      else status = fb.ctx === 'dock' ? 'AUTOPILOT · LINED UP ON THE PORT' : 'AUTOPILOT · HEADING FOR THE PORT' + (g.warp === 1 ? ' · WARP WITH .' : '');
+    } else if (fb && fb.burn && D.state === 'free') {
+      // guided burn
+      const left = `${fmt(fb.left, fb.left < 10 ? 1 : 0)} m/s`;
+      this.cells([[left, fb.label || 'BURN'], [el2.e < 1 ? fmtDist(el2.ra - pl.radius) : 'ESCAPE', 'APOAPSIS'], [fmtDist(el2.rp - pl.radius), 'PERIAPSIS', el2.rp < pl.radius ? 'bad' : null]]);
+      if (fb.burn === 'ready') { status = 'BURN NOW · HOLD W'; stCls = 'good'; }
+      else if (fb.burn === 'wait') status = `NEXT BURN IN ${formatDuration(Math.max(0, fb.t || 0))} · WARP WITH .`;
+      else if (fb.burn === 'turning') { status = 'TURNING TO BURN · KEEP W HELD'; stCls = 'warn'; }
+      else if (fb.burn === 'burning') { status = `BURNING · ${left} TO GO`; stCls = 'good'; }
+      else if (fb.burn === 'complete') { status = 'BURN COMPLETE'; stCls = 'good'; }
+    } else if (docking && D.state === 'free') {
       const tol = diff;
       const vmax = Math.max(tol.closing * 0.8, Math.min(2.0, r.range * 0.02));
       const near = r.range < 30;
@@ -285,8 +313,8 @@ export class HUD {
     // assist line
     const p = g.pilot;
     const a = [];
-    if (p.killRot) a.push('KILL ROT' + (D.rel.range < 250 && W.meridianActive ? ' (SPIN-MATCH)' : ''));
-    if (p.killVel) a.push('KILL REL VEL');
+    if (p.fbw?.auto) a.push(p.fbw.auto);
+    if (p.fbw && p.fbw.ctx !== 'free' && p.fbw.speedSet !== undefined) a.push(`SPEED SET ${fmt(p.fbw.speedSet, 2)} m/s (SAFE ${fmt(p.fbw.vSafe, 2)})`);
     if (p.attMode) a.push('HOLD ' + p.attMode.toUpperCase());
     if (!diff.helpers) a.length = 0;
     if (detail) a.push(p.camMode === 'dock' ? 'DOCK CAM' : p.camMode.toUpperCase());

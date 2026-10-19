@@ -41,7 +41,7 @@ export class LaunchMission extends Mission {
       ['ascent', 'Fly the ascent: gravity turn, max-Q, staging'],
       ['orbit', 'Reach a stable orbit (periapsis above 150 km)'],
       ['rendezvous', 'Rendezvous with the Meridian'],
-      ['lesson', 'Learn why pointing at the Meridian is wrong'],
+      ['lesson', settings.difficulty.helpers ? 'Close in under the flight computer (W / S)' : 'Learn why pointing at the Meridian is wrong'],
       ['dock', 'Dock with the spinning hub port'],
       ['hatch', 'Float through the hatch into the Meridian'],
     ]);
@@ -58,7 +58,9 @@ export class LaunchMission extends Mission {
   controlsNote() {
     const st = this.stage || 'launch';
     if (st === 'launch') return 'On the pad, press <kbd>Space</kbd> to flip each switch on the startup panel. During the climb, <kbd>Space</kbd> drops the booster when CASE-9 calls it.';
-    return 'Follow CASE-9 and the markers. Near the station, <kbd>K</kbd> stops you rotating and <kbd>L</kbd> stops you drifting — then nudge in with <kbd>W</kbd>.';
+    return settings.difficulty.helpers
+      ? 'Follow CASE-9 and the markers. For a burn, hold <kbd>W</kbd>. Near the station, <kbd>W</kbd> / <kbd>S</kbd> set your speed and the computer lines you up with the port.'
+      : 'Follow CASE-9 and the markers. Kill your drift near the station, line up on the port axis, match her roll, then nudge in with <kbd>W</kbd>.';
   }
   interiorTarget() { return this.phaseName === 'docked' ? 'hub' : null; }
   allowUndock() { return false; }
@@ -137,7 +139,7 @@ export class LaunchMission extends Mission {
       }
       self.padHold = false;
       self.world.kestrel.body.frozen = false;
-      self.say('case', 'Liftoff. Clamps released. The pitch cue will tell you where to point; Assisted pilots can hold it with zero.');
+      self.say('case', settings.difficulty.helpers ? 'Liftoff. Clamps released. I will fly the pitch program; you can steer with the mouse if you want.' : 'Liftoff. Clamps released. The pitch cue will tell you where to point.');
       g.pilot.lockControls = false;
       self.phaseName = 'ascent';
       self.ascentT0 = self.world.time;
@@ -245,7 +247,8 @@ export class LaunchMission extends Mission {
     this.run((function* () {
       yield* self.line('case', 'Orbit. Technically we are still falling, but we keep missing. Congratulations.');
       yield* self.line('case', 'The Meridian is in a higher orbit, ahead of us. Lower orbits are faster, so we are catching up. The diamond cue shows the next burn; press M for the map.');
-      yield* self.line('case', 'Time warp with the period key. I will drop us out of warp before each burn.');
+      if (settings.difficulty.helpers) yield* self.line('case', 'When it says BURN NOW, hold W: I point us, fire, and cut off when the burn is done. Time warp with the period key; I will drop us out of warp before each burn.');
+      else yield* self.line('case', 'Time warp with the period key. I will drop us out of warp before each burn.');
     })());
   }
 
@@ -259,9 +262,24 @@ export class LaunchMission extends Mission {
     this.checkpointStage = 'rendezvous';
     this.reachStage('rendezvous');
     this.lesson = 'intro';
+    if (settings.difficulty.helpers) {
+      // simple flight: the computer handles the orbital mechanics, the pilot sets the pace
+      this.run((function* () {
+        yield* self.line('case', 'Two kilometres. Rendezvous complete. From here I fly the orbital mechanics. You just set the pace.');
+        yield* self.line('case', 'Tap or hold W to speed up toward the Meridian, S to slow down, Space to stop. I keep us at a speed we can always stop from.');
+        self.complete('lesson');
+        self.lesson = 'done';
+        yield () => self.world.docking.rel.range < 380;
+        yield* self.line('case', 'Final approach. I am lining us up with the port and matching her roll. She turns at four point seven RPM. Keep W on and I will slow us down for capture.');
+        self.guide.clear();
+        self.saveCheckpoint('Final approach · 300 m');
+        self.checkpointStage = 'final';
+      })());
+      return;
+    }
     this.run((function* () {
       yield* self.line('case', 'Two kilometres. Rendezvous complete. Now for the part that confuses everyone.');
-      yield* self.line('case', 'Point the nose at the Meridian and push forward for a few seconds. Go on. Watch the cyan predicted path.' + (settings.difficulty.helpers ? ' Seven holds the nose on target.' : ''));
+      yield* self.line('case', 'Point the nose at the Meridian and push forward for a few seconds. Go on. Watch the cyan predicted path.');
       self.lesson = 'push';
       const r0 = self.world.docking.rel.range;
       const t0 = self.world.time;
@@ -276,8 +294,7 @@ export class LaunchMission extends Mission {
       void r0;
       yield () => self.world.docking.rel.range < 320;
       yield* self.line('case', 'Approach corridor. From here: stop the drift, line up on the port axis, match the Meridian\'s roll. It turns at four point seven RPM, and so must we.');
-      if (settings.difficulty.helpers) yield* self.line('case', 'Assisted: L nulls relative velocity, 9 aligns with the port axis, K matches the station\'s spin inside 250 metres. Then creep in with W.');
-      else yield* self.line('case', 'Realistic: no auto-stabilisation. Use the docking camera — C — and keep the cross in the circle.');
+      yield* self.line('case', 'No auto-stabilisation. Use the docking camera — C — and keep the cross in the circle.');
       self.guide.clear();
       self.saveCheckpoint('Final approach · 300 m');
       self.checkpointStage = 'final';
@@ -337,7 +354,7 @@ export class LaunchMission extends Mission {
   updateAscent() {
     const g = this.game, W = this.world, K = W.kestrel;
     const cue = this.ascentCue();
-    g.pilot.burnTarget = { dir: cue.dir };
+    g.pilot.burnTarget = { dir: cue.dir, cut: !K.booster && cue.apAlt > 200e3 };
     g.ui.hud.setCue('asc', { dir: cue.dir, icon: 'cue', cls: 'green', label: `PITCH ${cue.e.toFixed(0)}°`, clamp: true });
     g.ui.hud.phaseText = K.booster ? 'ASCENT · STAGE 1' : 'ASCENT · STAGE 2';
     g.ui.hud.phaseSub = `Ap ${(cue.apAlt / 1000).toFixed(1)} km · alt ${(cue.alt / 1000).toFixed(1)} km · q ${(K.q / 1000).toFixed(1)} kPa`;
@@ -346,8 +363,11 @@ export class LaunchMission extends Mission {
     if (!this.maxQ) this.maxQ = { peak: 0, said: 0 };
     const mq = this.maxQ;
     if (q > mq.peak) mq.peak = q;
-    if (mq.said === 0 && q > 15000) { mq.said = 1; this.say('case', 'Approaching max-Q. Throttle back to about seventy percent with X and keep the nose on the velocity vector.'); }
-    if (mq.said === 1 && mq.peak > 18000 && q < mq.peak * 0.92) { mq.said = 2; this.say('case', `Max-Q, ${(mq.peak / 1000).toFixed(1)} kilopascals. Through the worst of it. Throttle up.`); }
+    const simple = settings.difficulty.helpers;
+    if (mq.said === 0 && q > 15000) { mq.said = 1; this.say('case', simple ? 'Approaching max-Q. I am throttling back to seventy percent through the thick air.' : 'Approaching max-Q. Throttle back to about seventy percent with X and keep the nose on the velocity vector.'); }
+    if (mq.said === 1 && mq.peak > 18000 && q < mq.peak * 0.92) { mq.said = 2; this.say('case', `Max-Q, ${(mq.peak / 1000).toFixed(1)} kilopascals. Through the worst of it.` + (simple ? ' Back to full throttle.' : ' Throttle up.')); }
+    // simple flight: the computer flies the throttle through max-Q
+    if (simple && !this.mecoSaid && K.cmd.throttle > 0) K.cmd.throttle = mq.said === 1 ? 0.7 : 1;
     // aerodynamic structural limit
     if (q > 24000 && K.aoa > 0.17) K.damage((q / 1000 - 20) * 0.08 * (K.aoa / 0.17), 'aero');
     if (q > 48000) K.damage((q - 48000) * 0.0004, 'aero');
@@ -357,7 +377,7 @@ export class LaunchMission extends Mission {
     const apAlt = el.ra - EARTH.radius;
     if (!K.booster && apAlt > 195e3 && !this.mecoSaid) {
       this.mecoSaid = true;
-      this.say('case', 'Apoapsis two hundred kilometres. Cut the engine — Backspace — and coast to apoapsis.', { priority: true });
+      this.say('case', settings.difficulty.helpers ? 'Apoapsis two hundred kilometres. Engine cut-off. We coast up to apoapsis now.' : 'Apoapsis two hundred kilometres. Cut the engine — Backspace — and coast to apoapsis.', { priority: true });
     }
     if (this.mecoSaid && K.cmd.throttle === 0 && !this.coast) {
       this.coast = true;

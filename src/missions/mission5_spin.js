@@ -6,7 +6,7 @@
 // RCS jets overheating), drive in, capture - the two bodies merge with
 // angular momentum conserved - then fire the rim jets to despin to zero.
 
-import { Vector3, Quaternion, Matrix4 } from 'three';
+import { Vector3, Quaternion, Matrix4, MathUtils } from 'three';
 import { Mission } from './missionBase.js';
 import { DockingDirector } from './dockingDirector.js';
 import { circularState, orientStation, pointKestrel } from './scenario.js';
@@ -63,7 +63,7 @@ export class SpinDockMission extends Mission {
         ['case', 'Anything that breaks off that ring leaves sideways at two hundred seventy metres a second. Stay on the axis and none of it comes our way. The slow debris from the blast is another matter — watch for it.'],
         ['case', 'Plan: line up at fifty metres, null the drift, then roll up to her spin. The roll will push you into your seat — well, out of it. Your eyes are a metre from our roll axis. Expect a red-out.'],
       ]);
-      if (settings.difficulty.helpers) yield* self.line('case', 'Assisted: 9 aligns with her axis, L nulls drift, K matches her spin inside two hundred fifty metres. Coarse RCS — T — for the roll.');
+      if (settings.difficulty.helpers) yield* self.line('case', 'I will hold us on her axis and roll us up to her spin. You set the pace with W and S. Slowly.');
     })());
   }
 
@@ -108,7 +108,11 @@ export class SpinDockMission extends Mission {
   }
 
   allowExit() { return false; }
-  controlsNote() { return 'Line up on the station\'s spin axis, then roll with <kbd>Q</kbd> <kbd>E</kbd> until SPIN MATCH reads 100%' + (settings.difficulty.helpers ? ' (<kbd>K</kbd> does it for you inside 250 m)' : '') + '. Then close in slowly with <kbd>W</kbd>.'; }
+  controlsNote() {
+    return settings.difficulty.helpers
+      ? 'The flight computer keeps you on the spin axis and matches her roll inside 400 m. Set your approach speed with <kbd>W</kbd> / <kbd>S</kbd>; <kbd>Space</kbd> stops.'
+      : 'Line up on the station\'s spin axis, then roll with <kbd>Q</kbd> <kbd>E</kbd> until SPIN MATCH reads 100%. Then close in slowly with <kbd>W</kbd>.';
+  }
   allowUndock() { return false; }
   warpLimit() {
     if (this.phase === 'despin') return 50;
@@ -127,7 +131,7 @@ export class SpinDockMission extends Mission {
       yield* self.lines([
         ['case', `Hard dock. Angular momentum conserved: the Meridian and the Kestrel are one body now, turning at ${a.toFixed(2)} RPM — it was ${b.toFixed(2)} before we joined.`],
         ['case', `I have the ring jets. Four of them, twenty-five kilonewtons each, forty-one metres out. Against ${(S.body.inertiaBody.elements[8] / 1e6).toFixed(0)} million kilogram metres squared, that is ${(1000 * 4 * 25000 * 41.2 / S.body.inertiaBody.elements[8]).toFixed(1)} milliradians per second squared.`],
-        ['case', `Hold ${S.spinRate > 0 ? 'E' : 'Q'} — against the spin. It will take about ${(Math.abs(S.spinRate) / (4 * 25000 * 41.2 / S.body.inertiaBody.elements[8]) / 60).toFixed(0)} minutes. Time warp is yours.`],
+        ['case', `${settings.difficulty.helpers ? 'Hold W and I will fire them against the spin' : `Hold ${S.spinRate > 0 ? 'E' : 'Q'} — against the spin`}. It will take about ${(Math.abs(S.spinRate) / (4 * 25000 * 41.2 / S.body.inertiaBody.elements[8]) / 60).toFixed(0)} minutes. Time warp is yours.`],
       ]);
     })());
   }
@@ -135,7 +139,10 @@ export class SpinDockMission extends Mission {
   fixedUpdate(dt) {
     const W = this.world, S = W.meridian, input = this.game.input;
     if (this.phase === 'despin') {
-      const cmd = input.axis('KeyE', 'KeyQ');   // Q = +Z torque, E = -Z
+      let cmd = input.axis('KeyE', 'KeyQ');   // Q = +Z torque, E = -Z
+      // simple flight: hold W (or Q / E) and the computer fires against the
+      // spin, easing off as it nears zero
+      if (settings.difficulty.helpers && (input.key('KeyW') || cmd)) cmd = -MathUtils.clamp(S.spinRate / 0.05, -1, 1);
       S.despinCmd = cmd;
       if (Math.abs(S.spinRate) < 0.004 && !this.stopped) { this.stopped = true; S.despinCmd = 0; }
       if (this.stopped) S.despinCmd = 0;
@@ -173,7 +180,7 @@ export class SpinDockMission extends Mission {
       g.heart = 0.3;
       const spin = rpm(S.spinRate);
       g.ui.hud.phaseText = 'DESPIN';
-      g.ui.hud.phaseSub = `MERIDIAN ${spin.toFixed(2)} RPM · rim jets ${S.despinCmd ? (S.despinCmd > 0 ? '+' : '−') + ' FIRING' : 'idle'} · hold ${S.spinRate > 0 ? 'E' : 'Q'}`;
+      g.ui.hud.phaseSub = `MERIDIAN ${spin.toFixed(2)} RPM · rim jets ${S.despinCmd ? (S.despinCmd > 0 ? '+' : '−') + ' FIRING' : 'idle'} · hold ${settings.difficulty.helpers ? 'W' : S.spinRate > 0 ? 'E' : 'Q'}`;
       g.extraWarnings = [];
       const marks = [50, 40, 30, 20, 10, 5, 1];
       for (const mk of marks) if (Math.abs(spin) < mk && !(this['m' + mk])) { this['m' + mk] = true; this.say('case', mk === 1 ? 'One RPM. Gently.' : `${mk} RPM.`, { key: 'rpm', cooldown: 1 }); }
