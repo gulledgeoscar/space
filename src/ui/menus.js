@@ -94,7 +94,7 @@ export class Menus {
       <div class="srow">Field of view <input type="range" min="50" max="100" step="1" data-s="fov"></div>
       <div class="srow">Graphics quality <select data-s="quality"><option value="low">Low (laptop)</option><option value="medium">Medium</option><option value="high">High</option></select></div>
       <div class="srow">Max time warp <select data-s="maxWarp" data-num><option>1</option><option>5</option><option>10</option><option>25</option><option>50</option></select></div>
-      <div class="srow">Docking difficulty <select data-s="difficulty"><option value="assisted">Assisted — helpers, guidance</option><option value="realistic">Realistic — no auto-stabilisation</option><option value="expert">Expert — dock cam + raw numbers</option></select></div>
+      <div class="srow">Docking difficulty <select data-s="difficulty"><option value="assisted">Simple — flight computer flies it with you</option><option value="realistic">Realistic — no auto-stabilisation</option><option value="expert">Expert — dock cam + raw numbers</option></select></div>
       <div class="srow">Master volume <input type="range" min="0" max="1" step="0.05" data-s="masterVolume"></div>
       <div class="srow">Music volume <input type="range" min="0" max="1" step="0.05" data-s="musicVolume"></div>
       <div class="srow">CASE-9 voice <select data-s="voice" data-bool><option value="true">Spoken + subtitles</option><option value="false">Subtitles only</option></select></div>
@@ -104,7 +104,7 @@ export class Menus {
       <div class="srow">Subtitle size <input type="range" min="0.7" max="1.6" step="0.05" data-s="subtitleSize"></div>
       <div class="srow">Show FPS <select data-s="showFps" data-bool><option value="false">Off</option><option value="true">On</option></select></div>
     </div>
-    <div class="note">Assisted adds kill-rotation (K), kill-relative-velocity (L), attitude holds (1–9) and a guidance cue. Helpers fly the same thrusters and burn the same propellant — the physics underneath never changes.</div>
+    <div class="note">Simple: point with the mouse and the ship holds it. Near the station W / S set your speed and the flight computer lines you up, matches the spin and slows you for capture; for burns you hold W and it cuts off by itself; landings are automatic (H to take over). It flies the same thrusters and burns the same propellant — the physics never changes.</div>
     <button data-a="unlock">UNLOCK ALL MISSIONS</button>
     <button data-a="back">BACK</button></div>`);
     const voiceSel = box.querySelector('[data-voices]');
@@ -129,11 +129,13 @@ export class Menus {
 
   controls(back) {
     const rows = [
-      ['FLIGHT', ''], ['W / S', 'RCS forward / back'], ['A / D', 'RCS left / right'], ['R / F', 'RCS up / down'],
+      ['FLIGHT · SIMPLE', ''], ['Mouse, ↑↓←→', 'Point the ship'], ['W', 'Go faster near the station · hold to burn'], ['S', 'Slow down / back off'],
+      ['Space', 'Stop (near the station)'], ['A D R F', 'Slide sideways'], ['H', 'Take over / give back the landing'],
+      ['FLIGHT · REALISTIC', ''], ['W / S', 'RCS forward / back'], ['A / D', 'RCS left / right'], ['R / F', 'RCS up / down'],
       ['Mouse, ↑↓←→', 'Pitch / yaw'], ['Q / E', 'Roll'], ['Z / X', 'Throttle up / down (Shift = fast)'], ['Backspace', 'Cut throttle'],
       ['T', 'RCS fine / coarse'], ['C', 'Camera: cockpit / chase / docking'], ['RMB drag', 'Look / orbit chase cam'], ['G', 'Landing gear'],
       ['U', 'Release latches (undock)'], ['Space', 'Stage / confirm'], ['M', 'Map / orbit view'], [', / .', 'Time warp − / +'],
-      ['K / L', 'Assisted: kill rotation / kill rel. velocity'], ['1 – 9', 'Assisted: prograde, retro, normal, anti, rad out/in, target, anti, port align'],
+      ['1 – 0', 'Simple: attitude holds (prograde, retro, normal, anti, rad out/in, target, anti, port align, burn)'],
       ['ON FOOT', ''], ['WASD + mouse', 'Walk / look'], ['Shift', 'Run'], ['Space', 'Jump'], ['E', 'Interact · hatches · ladders'],
       ['F', 'Flashlight'], ['V', 'First / third person'], ['B', 'Drop a bolt (watch Coriolis)'],
       ['ZERO G', ''], ['Mouse', 'Look'], ['W A S D', 'Float (the suit stops you when you let go)'], ['Space / Ctrl', 'Up / down'], ['Shift', 'Faster'], ['E', 'Go through hatches · onto the ladder'],

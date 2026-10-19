@@ -53,7 +53,22 @@ Every docking has a checkpoint; a failed capture or a crash lets you retry from 
 
 ## Controls
 
-**Flight (Kestrel)**
+**Flight (Kestrel), Simple** (the default difficulty)
+
+| Key | Action |
+|-----|--------|
+| Mouse or ↑ ↓ ← → | Point the ship. It holds where you point and never tumbles. |
+| W | Near the station: go faster toward the port. Elsewhere: fire the engine; for a guided burn, hold W and it cuts off by itself. |
+| S | Slow down / back off |
+| Space | Stop (near the station) |
+| A D R F | Slide sideways |
+| Q / E | Roll |
+| H | Take over or hand back the landing |
+| C · M · , . | Camera · map · time warp |
+
+Inside 6 km of the Meridian a fly-by-wire flight computer takes over. W and S only set your approach speed. The computer routes you around the ring onto the docking axis, cancels orbital drift and keeps a speed it can always stop from. Inside 400 m it also lines the Kestrel up with the port, matches the station's spin and slows to capture speed in the last metres. Ascents follow the pitch program, with the throttle handled through max-Q and cut at the target apoapsis. Landings are automatic.
+
+**Flight (Kestrel), Realistic and Expert**
 
 | Key | Action |
 |-----|--------|
@@ -73,7 +88,7 @@ Every docking has a checkpoint; a failed capture or a crash lets you retry from 
 | Space | Stage separation / flip next checklist switch |
 | U | Release latches (undock) when docked |
 | E | Unstrap and float to the hatch when docked |
-| **Assisted only** | K kill rotation · L kill relative velocity · 1–0 attitude holds (prograde, retrograde, normal, anti-normal, radial out/in, target, anti-target, port-align, burn) |
+| **Simple only** | 1–0 attitude holds (prograde, retrograde, normal, anti-normal, radial out/in, target, anti-target, port-align, burn) |
 
 **On foot**
 
@@ -106,7 +121,7 @@ Every mission opens on a controls card for the way you start (flying, floating o
 
 ## Difficulty
 
-- **Assisted** adds the flight-computer helpers (kill rotation, kill relative velocity, attitude holds), a guidance arrow, the predicted trajectory and the approach corridor. It also loosens the capture tolerances. The helpers only command the same RCS jets you do; they never touch the physics.
+- **Simple** puts the fly-by-wire flight computer between you and the jets (see the controls above). It adds a guidance arrow, the predicted trajectory and the approach corridor, and loosens the capture tolerances. The computer only commands the same RCS jets and engine you would, burning the same propellant; it never touches the physics.
 - **Realistic** captures at closing speed < 0.10 m/s, alignment within 1°, and lateral offset within 0.12 m, with no helpers.
 - **Expert** tightens the tolerances further, shows raw numbers only, and gives you just the grainy docking-camera feed inside 300 m.
 

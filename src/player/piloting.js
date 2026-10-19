@@ -1,14 +1,22 @@
 // Piloting controller for the Kestrel.
 //
-// Inputs map straight to RCS jets/throttle. Assisted-mode helpers are a
-// flight computer layered on top: they only ever command the same jets the
-// pilot could fire, burning the same propellant - the physics underneath is
-// never altered.
-//
+// REALISTIC / EXPERT: inputs map straight to RCS jets and throttle.
 //   W/S fwd/back  A/D left/right  R/F up/down      (translation)
 //   mouse / arrows pitch+yaw      Q/E roll         (rotation)
 //   Z/X throttle up/down  Backspace cut  T RCS fine/coarse  G gear
-//   Assisted: K kill rotation, L kill relative velocity, 1-9 attitude holds
+//
+// SIMPLE (the 'assisted' difficulty) puts a fly-by-wire flight computer in
+// between. It only ever commands the same jets and engine the pilot could
+// fire, burning the same propellant - the physics is never altered:
+//   - the mouse/arrows point the nose and it holds there (never tumbles);
+//   - near the Meridian, W/S set an approach speed and the computer holds
+//     it, routes round the ring onto the docking axis, cancels drift, keeps
+//     a speed it can always stop from, and inside 400 m lines the Kestrel
+//     up with the port and matches the station's spin;
+//   - elsewhere W fires the main engine while held; for a guided burn
+//     (a mission or the rendezvous computer offers a direction and a dv)
+//     holding W turns onto it, burns and cuts off when it is done;
+//   - 1-0 remain as optional attitude holds.
 
 import { Vector3, Quaternion, Vector2, MathUtils, Matrix4 } from 'three';
 import { KESTREL } from '../ship/kestrel.js';
@@ -49,7 +57,18 @@ export class PilotController {
     this.allowMain = true;
     this.lockControls = false;
     this.lastInput = { t: new Vector3(), r: new Vector3() };
+    // simple flight state
+    this.aim = null;               // world direction the nose should point
+    this.aimIn = new Vector2();    // mouse aim accumulated since the last step
+    this.aimIdle = 99;             // seconds since the player last steered
+    this.speedSet = 0;             // fly-by-wire approach speed, m/s (+ = toward the port)
+    this.fbw = null;               // status for the HUD
+    this.wBoost = null;            // throttle to restore after a W boost
+    this.burn = null;              // guided burn in progress
+    this.wLatch = false;           // W must be released before it fires again
   }
+
+  get simple() { return settings.difficulty.helpers; }
 
   get world() { return this.game.world; }
   get kestrel() { return this.game.world.kestrel; }
@@ -72,6 +91,9 @@ export class PilotController {
         this.look.yaw = MathUtils.clamp(this.look.yaw - mouse.x * 0.003 * sens, -2.2, 2.2);
         this.look.pitch = MathUtils.clamp(this.look.pitch - mouse.y * 0.003 * sens, -1.2, 1.2);
       }
+    } else if (input.locked && !this.lockControls && !this.game.mapOpen && this.simple) {
+      this.aimIn.x += mouse.x * 0.0022 * sens;
+      this.aimIn.y += mouse.y * 0.0022 * sens * inv;
     } else if (input.locked && !this.lockControls && !this.game.mapOpen) {
       this.stick.x = MathUtils.clamp(this.stick.x - mouse.x * 0.0035 * sens, -1, 1);
       this.stick.y = MathUtils.clamp(this.stick.y - mouse.y * 0.0035 * sens * inv, -1, 1);
@@ -111,8 +133,9 @@ export class PilotController {
     if (input.hit('KeyG')) { K.gearDown = !K.gearDown; this.game.emit('gear', K.gearDown); }
     if (input.hit('Backspace')) K.cmd.throttle = 0;
     if (this.helpers) {
-      if (input.hit('KeyK')) { this.killRot = !this.killRot; this.attMode = null; this.game.emit('assist', this.killRot ? 'KILL ROTATION' : 'KILL ROTATION OFF'); }
-      if (input.hit('KeyL')) { this.killVel = !this.killVel; this.game.emit('assist', this.killVel ? 'KILL REL VELOCITY' : 'KILL REL VELOCITY OFF'); }
+      // (simple flight always holds attitude and cancels drift, so the old
+      // K / L toggles are gone; 1-0 remain as optional attitude holds)
+      this.killRot = false; this.killVel = false;
       for (const [code, mode] of Object.entries(ATT_MODES)) {
         if (input.hit(code)) {
           this.attMode = this.attMode === mode ? null : mode;
@@ -152,6 +175,7 @@ export class PilotController {
       if (!this.enabled) cmd.throttle = 0;
       return;
     }
+    if (this.simple) { this.simpleFlight(dt, input); return; }
     // translation (body axes; forward = -Z)
     cmd.t.set(input.axis('KeyA', 'KeyD'), input.axis('KeyF', 'KeyR'), input.axis('KeyW', 'KeyS'));
     // rotation: x = pitch (nose up +), y = yaw (nose left +), z = roll (left +)
@@ -178,6 +202,197 @@ export class PilotController {
       this.holdRate(ref, cmd.r);
     }
     if (this.killVel && !manualTrans) this.nullRelativeVelocity(cmd.t);
+  }
+
+  // ---- simple flight (fly-by-wire) ------------------------------------------
+  // context: 'dock' (< 400 m from the port), 'approach' (< 6 km), 'free'
+  flightContext() {
+    const W = this.world, D = W.docking;
+    const wants = W.meridianActive && D.state === 'free' && (this.game.mission?.wantsDocking?.() ?? true);
+    if (!wants) return 'free';
+    return D.rel.range < 400 ? 'dock' : D.rel.range < 6000 ? 'approach' : 'free';
+  }
+
+  simpleFlight(dt, input) {
+    const W = this.world, K = this.kestrel, b = K.body, cmd = K.cmd, D = W.docking;
+    // in contact with the port (capture, latching, docked): hands off
+    if (W.meridianActive && D.state !== 'free') {
+      cmd.t.set(0, 0, 0); cmd.r.set(0, 0, 0); cmd.throttle = 0;
+      this.speedSet = 0; this.burn = null; this.wBoost = null; this.aim = null; this.wLatch = true;
+      this.fbw = { ctx: 'dock', auto: 'CAPTURE', leg: 'final', speedSet: 0, speed: 0, vSafe: 0, closing: D.rel.closing, range: D.rel.range };
+      return;
+    }
+    const nose = new Vector3(0, 0, -1).applyQuaternion(b.quat);
+    if (!this.aim) this.aim = nose.clone();
+    // steering: the mouse and arrow keys move the aim point, the ship follows
+    const upB = new Vector3(0, 1, 0).applyQuaternion(b.quat), rightB = new Vector3(1, 0, 0).applyQuaternion(b.quat);
+    const yaw = -this.aimIn.x + input.axis('ArrowRight', 'ArrowLeft') * dt * 0.7;
+    const pitch = -this.aimIn.y + input.axis('ArrowDown', 'ArrowUp') * dt * 0.7;
+    this.aimIn.set(0, 0);
+    if (Math.abs(yaw) + Math.abs(pitch) > 1e-6) {
+      this.aim.applyAxisAngle(upB, yaw).applyAxisAngle(rightB, pitch).normalize();
+      // never let the aim run more than ~50 degrees ahead of the nose
+      const ang = this.aim.angleTo(nose);
+      if (ang > 0.9) this.aim.copy(nose).lerp(this.aim, 0.9 / ang).normalize();
+      this.aimIdle = 0;
+    } else this.aimIdle += dt;
+    const manual = this.aimIdle < 3;
+    const ctx = this.flightContext();
+    const S = W.meridian;
+    const ref = new Vector3();
+    let up = null, auto = '';
+    if (ctx === 'dock') {
+      // turn with the station - but only the part of her spin that is a roll
+      // for us (the Kestrel can't tumble end over end at her rate)
+      const c = S.axisWorld(ref).dot(nose);
+      ref.copy(nose).multiplyScalar(S.spinRate * c);
+      if (!manual) { const t = this.attitudeTarget('port-align'); this.aim.copy(t.fwd); up = t.up; auto = 'AUTO-ALIGN TO PORT'; }
+    } else if (ctx === 'approach' && !manual) {
+      this.aim.subVectors(D.rel.portWorld, b.pos).normalize();
+      auto = 'POINTING AT PORT';
+    } else if (ctx === 'free' && (this.burn || (this.burnTarget && (this.attMode === 'burn' || !manual || input.key('KeyW'))))) {
+      this.aim.copy(this.burn ? this.burn.dir : this.burnTarget.dir).normalize();
+      auto = 'FOLLOWING GUIDANCE';
+    } else if (this.attMode && !manual) {
+      const t = this.attitudeTarget(this.attMode);
+      if (t) { this.aim.copy(t.fwd); up = t.up; auto = 'HOLD ' + this.attMode.toUpperCase(); }
+    }
+    this.pointAt(this.aim, up, ref, cmd.r);
+    const roll = input.axis('KeyE', 'KeyQ');
+    if (roll) cmd.r.z = roll;
+
+    if (ctx === 'free') { this.freeFlight(dt, input, nose, auto); return; }
+
+    // ---- fly-by-wire near the station: hold a commanded velocity ----
+    cmd.throttle = 0;
+    this.wBoost = null; this.burn = null;
+    const axis = D.rel.axisWorld;
+    // where the Kestrel is, relative to the port, in a frame that does not
+    // turn with the station (z along her axis, lateral off it)
+    const rel = new Vector3().copy(D.rel.pos).applyQuaternion(S.body.quat);
+    const z = rel.dot(axis);
+    const latV = rel.clone().addScaledVector(axis, -z);
+    const lat = latV.length();
+    const latDir = lat > 0.5 ? latV.clone().multiplyScalar(1 / lat) : new Vector3().crossVectors(axis, new Vector3(0, 0, 1)).normalize();
+    if (latDir.lengthSq() < 0.5) latDir.set(1, 0, 0);
+    // route: once inside the approach cone, straight down the axis; else to
+    // a point on the axis in front of the port, swinging wide of the ring
+    // if we are beside or behind her
+    // (with some hysteresis once we are on the final leg, and right in to
+    // the ring: the docking point is a metre or two short of the port)
+    const inCone = z > -1 && lat < (this.finalLeg ? 5 + z * 0.4 : 2 + z * 0.12);
+    this.finalLeg = inCone;
+    let goal, leg;
+    if (inCone) { goal = new Vector3(); leg = 'final'; }
+    else if (z < 60 && lat < 160) { goal = latDir.clone().multiplyScalar(170).addScaledVector(axis, z); leg = 'clear the ring'; }
+    else if (z < 60) { goal = latDir.clone().multiplyScalar(lat).addScaledVector(axis, 120); leg = 'round to the front'; }
+    else { goal = axis.clone().multiplyScalar(Math.min(z, 250)); leg = 'onto the axis'; }
+    const toGoal = goal.clone().sub(rel);
+    const dist = inCone ? D.rel.range : toGoal.length();
+    // safe speed for the distance: can always stop on the thrusters, and
+    // slows to capture speed in the last metres
+    const aBrake = (KESTREL.rcs.coarse * 4) / b.mass * 0.4;
+    const cap = ctx === 'dock' ? 2.5 : 20;
+    const vSafe = inCone
+      ? Math.min(cap, Math.max(0.1, Math.min(Math.sqrt(2 * aBrake * Math.max(0, dist - 3)), 0.08 + dist * 0.025)))
+      : Math.min(cap, Math.max(0.4, Math.min(Math.sqrt(2 * aBrake * dist), 0.4 + dist * 0.05)));
+    const fine = inCone && dist < 30;
+    if (input.key('KeyW')) this.speedSet = Math.min(cap, Math.max(this.speedSet, 0) + dt * (fine ? 0.1 : 0.8));
+    if (input.key('KeyS')) this.speedSet = Math.max(-1.0, this.speedSet - dt * (fine ? 0.15 : 0.8));
+    if (input.hit('Space')) this.speedSet = 0;
+    let speed = Math.min(this.speedSet, vSafe);
+    // hold short of the port until the capture conditions are met (on a
+    // fast-spinning station the port face moves sideways unless we are
+    // within centimetres of her axis, and touching it early knocks us off)
+    let holding = false;
+    if (inCone && dist < 4 && speed > 0) {
+      const tol = settings.difficulty, r = D.rel;
+      const latNeed = Math.min(tol.lateral * 0.6, (tol.lateralVel * 0.4) / Math.max(Math.abs(r.spin), 0.05));
+      const ready = r.lateral < latNeed && r.latVel < tol.lateralVel * 0.6 && r.tilt < tol.tilt * 0.6 && Math.abs(r.rollRate) < tol.rollRate * 0.6;
+      if (!ready) { speed = MathUtils.clamp((z - 2.5) * 0.15, -0.05, speed); holding = true; }
+    }
+    const along = inCone ? axis.clone().negate() : toGoal.clone().normalize();
+    // final leg: steer onto the axis as we come down it, and come down it
+    // more slowly while still well off-centre
+    const centred = inCone ? MathUtils.clamp(1.5 - lat / (1.5 + z * 0.12), 0.15, 1) : 1;
+    const want = along.clone().multiplyScalar(speed * centred);
+    if (inCone) {
+      const lm = latV.clone().multiplyScalar(-Math.min(0.15, Math.max(0.05, 2.0 / Math.max(10, dist))));
+      const cap = Math.max(0.6, speed);
+      if (lm.length() > cap) lm.setLength(cap);
+      want.add(lm);
+    }
+    // A/D/R/F nudge sideways
+    const nudge = new Vector3(input.axis('KeyA', 'KeyD'), input.axis('KeyF', 'KeyR'), 0);
+    if (nudge.lengthSq()) want.addScaledVector(nudge.applyQuaternion(b.quat), fine ? 0.15 : 0.6);
+    // track it with the jets (coarse for big corrections, fine close in)
+    // (centre-of-mass velocities: at the docking ring, our own fast roll on
+    // a spinning station would add circling noise)
+    const vrel = new Vector3().subVectors(b.vel, S.body.vel);
+    const dv = want.clone().sub(vrel);
+    // (coarse also while rolling up to a fast spin)
+    K.rcsMode = (dv.length() > 0.15 && D.rel.range > 25) || Math.abs(D.rel.rollRate) > 0.03 ? 'coarse' : 'fine';
+    const acc = (K.rcsThrust() * 4) / b.mass;
+    _qi.copy(b.quat).invert();
+    const db = dv.applyQuaternion(_qi);
+    const gT = (v) => (Math.abs(v) < 0.003 ? 0 : MathUtils.clamp(v / (acc * 0.5), -1, 1));
+    cmd.t.set(gT(db.x), gT(db.y), gT(db.z));
+    this.fbw = { ctx, auto, leg, holding, speedSet: this.speedSet, speed, vSafe, closing: D.rel.closing, range: D.rel.range };
+  }
+
+  // Away from the station. W fires the main engine while held. When a
+  // mission offers a guided burn (a direction and a Δv), holding W flies it:
+  // the nose turns onto the burn, the engine (or the thrusters, for small
+  // burns) fires, and it cuts off by itself when the Δv is done.
+  freeFlight(dt, input, nose, auto) {
+    const K = this.kestrel, cmd = K.cmd;
+    const bt = this.burnTarget;
+    const w = input.key('KeyW');
+    if (!w) this.wLatch = false;
+    cmd.t.set(input.axis('KeyA', 'KeyD'), input.axis('KeyF', 'KeyR'), input.key('KeyS') ? 1 : 0);
+    if (K.rcsMode !== 'coarse') K.rcsMode = 'coarse';
+    this.speedSet = 0;
+    let burn = '';
+    if (!this.allowMain) cmd.throttle = 0;
+    if (bt?.cut && (cmd.throttle > 0 || this.wBoost !== null)) {
+      // the mission says the engine's work is done (ascent at apoapsis)
+      cmd.throttle = 0; this.wBoost = null; this.wLatch = true;
+    }
+    const guided = bt && bt.dv !== undefined;
+    if (this.burn || (guided && bt.now && w && !this.wLatch)) {
+      // ---- guided burn ----
+      if (!this.burn) this.burn = { label: bt.label, dir: bt.dir.clone(), goal: bt.dv, dv0: K.dvUsed, live: !!bt.terminal };
+      const B = this.burn;
+      const same = bt && bt.label === B.label;
+      if (same) B.dir.copy(bt.dir);
+      let left = B.goal - (K.dvUsed - B.dv0);
+      if (same && bt.now) left = Math.min(left, bt.dv);
+      if (B.live && !same) left = 0;
+      const aligned = nose.angleTo(B.dir) < 0.05;
+      if (!w || left < 0.15) {
+        cmd.throttle = 0;
+        if (left < 0.15) { this.wLatch = true; this.game.emit('assist', 'BURN COMPLETE'); }
+        this.burn = null;
+        burn = left < 0.15 ? 'complete' : '';
+      } else if (!aligned) { cmd.throttle = 0; burn = 'turning'; }
+      else {
+        const aMain = KESTREL.main.thrust / K.body.mass;
+        if (left > 4 && this.allowMain) cmd.throttle = MathUtils.clamp(left / (aMain * 1.5), 0.08, 1);
+        else { cmd.throttle = 0; cmd.t.z = -1; }
+        burn = 'burning';
+      }
+      this.fbw = { ctx: 'free', auto, burn, left: Math.max(0, left), label: B.label };
+      return;
+    }
+    if (this.allowMain && this.attMode !== 'burn' && !bt?.cut) {
+      if (w && !this.wLatch && !guided) {
+        if (this.wBoost === null) this.wBoost = cmd.throttle;
+        cmd.throttle = Math.min(1, cmd.throttle + dt * 1.5);
+      } else if (this.wBoost !== null) { cmd.throttle = this.wBoost; this.wBoost = null; }
+      if (input.key('KeyZ')) cmd.throttle = Math.min(1, cmd.throttle + dt * 0.6);
+      if (input.key('KeyX')) cmd.throttle = Math.max(0, cmd.throttle - dt * 0.6);
+    }
+    this.fbw = { ctx: 'free', auto, burn: guided ? (this.wLatch && w ? 'complete' : bt.now ? 'ready' : 'wait') : '', left: guided ? bt.dv : 0, label: guided ? bt.label : '', t: bt?.t };
   }
 
   // The rotating reference the pilot wants to be still in: near the
@@ -233,7 +448,7 @@ export class PilotController {
     const ang = Math.atan2(s, -f.z);
     const desired = new Vector3();
     const au = this.authority();
-    const maxRate = Math.min(0.12, Math.sqrt(2 * Math.min(au.pitch, au.yaw) * 0.5 * Math.max(ang, 1e-4)));
+    const maxRate = Math.min(this.simple ? 0.35 : 0.12, Math.sqrt(2 * Math.min(au.pitch, au.yaw) * 0.5 * Math.max(ang, 1e-4)));
     if (s > 1e-6) desired.copy(ax).multiplyScalar((Math.min(ang * 1.2, maxRate)) / s);
     if (up) {
       const u = _b.copy(up).applyQuaternion(_qi);

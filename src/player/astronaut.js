@@ -9,7 +9,7 @@
 
 import {
   Group, Mesh, SphereGeometry, BoxGeometry, CylinderGeometry, TorusGeometry, LatheGeometry, CapsuleGeometry,
-  MeshStandardMaterial, MeshPhysicalMaterial, MeshBasicMaterial, Color, SpotLight, Object3D, Vector2,
+  MeshStandardMaterial, MeshPhysicalMaterial, MeshBasicMaterial, Color, SpotLight, Object3D, Vector2, Vector3, Matrix4,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { materials } from '../world/materials.js';
@@ -40,6 +40,18 @@ function limb(r0, r1, len, mat) {
   capB.position.y = -len;
   for (const m of [body, capT, capB]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
   return g;
+}
+
+// Orient a figure in its parent's frame: face along fwd (-Z) with +Y = up.
+// (Object3D.lookAt works in world space, which is wrong for figures placed
+// inside the rotating station or a planet-site frame.)
+const _mb = new Matrix4(), _rx = new Vector3(), _fz = new Vector3(), _uy = new Vector3();
+export function faceAlong(obj, fwd, up) {
+  _uy.copy(up).normalize();
+  _fz.copy(fwd).addScaledVector(_uy, -fwd.dot(_uy)).normalize();
+  _rx.crossVectors(_uy, _fz).negate().normalize();   // right = fwd x up
+  _mb.makeBasis(_rx, _uy, _fz.clone().negate());
+  obj.quaternion.setFromRotationMatrix(_mb);
 }
 
 export function buildAstronaut({ suit = 0xe8e6df, accent = 0xd8641e, name = 'pilot' } = {}) {
@@ -166,8 +178,12 @@ export function buildAstronaut({ suit = 0xe8e6df, accent = 0xd8641e, name = 'pil
   };
   const L = { armL: arm(-1), armR: arm(1), legL: leg(-1), legR: leg(1) };
 
-  // pose helpers: rotation.z = side * out keeps the arm clear of the body
+  // Joint conventions (the figure faces -Z):
+  //   hip  rotation.x > 0  thigh swings forward      knee  rotation.x < 0  foot folds back
+  //   shoulder .x > 0      arm swings forward         elbow rotation.x > 0  forearm folds forward
+  //   shoulder .z = side * out  keeps the arm clear of the body
   const setArm = (A, side, fwd, out, elbow, twist = 0) => { A.sh.rotation.set(fwd, twist * side, side * out); A.el.rotation.x = elbow; };
+  const setLeg = (G, side, fwd, knee, out = 0.03) => { G.hp.rotation.set(fwd, 0, side * out); G.kn.rotation.x = -knee; };
 
   const anim = { phase: 0, lean: 0, bob: 0, breath: 0 };
   return {
@@ -180,56 +196,65 @@ export function buildAstronaut({ suit = 0xe8e6df, accent = 0xd8641e, name = 'pil
       const sp = pose.speed || 0;
       a.breath += dt * 1.6;
       const breath = Math.sin(a.breath) * 0.012;
+      this.hips.rotation.set(0, 0, 0);
       if (m === 'walk' || m === 'run' || m === 'idle') {
-        const stride = m === 'run' ? 1.6 : 1.15;
+        const run = m === 'run';
+        const stride = run ? 1.6 : 1.15;
         a.phase += dt * (sp / stride) * Math.PI * 2 * 0.5;
-        const k = Math.min(1, sp / (m === 'run' ? 4 : 1.6));
-        const amp = (m === 'run' ? 0.72 : 0.42) * k;
-        const s = Math.sin(a.phase);
-        L.legL.hp.rotation.set(s * amp, 0, -0.03); L.legR.hp.rotation.set(-s * amp, 0, 0.03);
-        L.legL.kn.rotation.x = Math.max(0, -Math.cos(a.phase)) * amp * 1.5 + 0.04;
-        L.legR.kn.rotation.x = Math.max(0, Math.cos(a.phase)) * amp * 1.5 + 0.04;
-        const elbow = -0.25 - k * (m === 'run' ? 0.9 : 0.35);
-        setArm(L.armL, -1, -s * amp * 0.85, 0.16 + k * 0.04 + breath, elbow);
-        setArm(L.armR, 1, s * amp * 0.85, 0.16 + k * 0.04 + breath, elbow);
-        this.hips.position.y = 0.95 - Math.abs(Math.cos(a.phase)) * 0.04 * k - (pose.crouch || 0) * 0.25;
-        this.hips.rotation.y = s * 0.08 * k;
-        this.torso.rotation.set(-(m === 'run' ? 0.22 : 0.05) * k + (pose.lean || 0) * 0.5 + breath, -s * 0.12 * k, pose.sideLean || 0);
-        this.head.rotation.set(0, s * 0.05 * k, 0);
+        const k = Math.min(1, sp / (run ? 4 : 1.6));
+        const amp = (run ? 0.75 : 0.45) * k;
+        const s = Math.sin(a.phase), c = Math.cos(a.phase);
+        // the knee folds while that leg swings through (moving forward)
+        setLeg(L.legL, -1, s * amp, 0.06 + Math.max(0, c) * amp * 1.6);
+        setLeg(L.legR, 1, -s * amp, 0.06 + Math.max(0, -c) * amp * 1.6);
+        // arms swing opposite to the legs, elbows bent a little (more when running)
+        const elbow = 0.22 + k * (run ? 1.05 : 0.3);
+        setArm(L.armL, -1, -s * amp * 0.85, 0.16 + k * 0.05 + breath, elbow);
+        setArm(L.armR, 1, s * amp * 0.85, 0.16 + k * 0.05 + breath, elbow);
+        this.hips.position.y = 0.95 - Math.abs(c) * 0.035 * k - (pose.crouch || 0) * 0.25;
+        this.hips.rotation.y = -s * 0.07 * k;
+        // lean into the motion (forward = -Z, i.e. negative rotation.x)
+        this.torso.rotation.set(-(run ? 0.2 : 0.05) * k + (pose.lean || 0) * 0.5 + breath, s * 0.1 * k, pose.sideLean || 0);
+        this.head.rotation.set(0, -s * 0.05 * k, 0);
       } else if (m === 'climb') {
         a.phase += dt * (pose.climbRate || 0) * 6;
         const s = Math.sin(a.phase), c = Math.cos(a.phase);
-        setArm(L.armL, -1, -2.45 + s * 0.4, 0.22, -0.6 + c * 0.3);
-        setArm(L.armR, 1, -2.45 - s * 0.4, 0.22, -0.6 - c * 0.3);
-        L.legL.hp.rotation.set(-0.5 + s * 0.4, 0, -0.05); L.legR.hp.rotation.set(-0.5 - s * 0.4, 0, 0.05);
-        L.legL.kn.rotation.x = 0.9 - s * 0.4; L.legR.kn.rotation.x = 0.9 + s * 0.4;
-        this.hips.rotation.set(0, 0, 0);
+        // hands up on the rungs in front, feet stepping
+        setArm(L.armL, -1, 2.5 + s * 0.35, 0.2, 0.55 + c * 0.3);
+        setArm(L.armR, 1, 2.5 - s * 0.35, 0.2, 0.55 - c * 0.3);
+        setLeg(L.legL, -1, 0.45 + s * 0.4, 0.85 + s * 0.4, 0.05);
+        setLeg(L.legR, 1, 0.45 - s * 0.4, 0.85 - s * 0.4, 0.05);
         this.torso.rotation.set(0.05, 0, pose.sideLean || 0);
+        this.head.rotation.set(-0.15, 0, 0);
         this.hips.position.y = 0.95;
       } else if (m === 'float') {
         a.phase += dt * 0.6;
         const s = Math.sin(a.phase);
-        setArm(L.armL, -1, -0.45 + s * 0.08, 0.55, -0.7);
-        setArm(L.armR, 1, -0.4 - s * 0.08, 0.5, -0.75);
-        L.legL.hp.rotation.set(0.15 + s * 0.06, 0, -0.08); L.legR.hp.rotation.set(-0.1 - s * 0.06, 0, 0.08);
-        L.legL.kn.rotation.x = 0.55; L.legR.kn.rotation.x = 0.35;
-        this.hips.rotation.set(0, 0, 0);
+        setArm(L.armL, -1, 0.35 + s * 0.08, 0.5, 0.65);
+        setArm(L.armR, 1, 0.4 - s * 0.08, 0.45, 0.7);
+        setLeg(L.legL, -1, 0.12 + s * 0.06, 0.5, 0.08);
+        setLeg(L.legR, 1, -0.08 - s * 0.06, 0.32, 0.08);
         this.torso.rotation.set(0.05 + breath, 0, 0);
+        this.head.rotation.set(0, 0, 0);
         this.hips.position.y = 0.95;
       } else if (m === 'sit') {
-        L.legL.hp.rotation.set(-1.45, 0, -0.06); L.legR.hp.rotation.set(-1.45, 0, 0.06);
-        L.legL.kn.rotation.x = 1.4; L.legR.kn.rotation.x = 1.4;
-        setArm(L.armL, -1, -0.75, 0.2, -0.85);
-        setArm(L.armR, 1, -0.75, 0.2, -0.85);
-        this.hips.rotation.set(0, 0, 0);
-        this.torso.rotation.set(0.1 + breath, 0, 0);
+        // thighs forward, shins down, hands on the knees
+        setLeg(L.legL, -1, 1.5, 1.45, 0.08);
+        setLeg(L.legR, 1, 1.5, 1.45, 0.08);
+        setArm(L.armL, -1, 0.7, 0.18, 0.75);
+        setArm(L.armR, 1, 0.7, 0.18, 0.75);
+        this.torso.rotation.set(-0.06 + breath, 0, 0);
+        this.head.rotation.set(0.05, 0, 0);
         this.hips.position.y = 0.55;
       } else if (m === 'down') {
         // knocked flat on the back, arms flung out
+        this.hips.rotation.set(Math.PI / 2, 0, 0);
+        this.hips.position.y = 0.2;
         this.torso.rotation.set(0, 0, 0);
-        setArm(L.armL, -1, -0.3, 1.15, -0.4);
-        setArm(L.armR, 1, -0.2, 1.05, -0.5);
-        L.legL.hp.rotation.set(0.1, 0, -0.15); L.legR.hp.rotation.set(-0.15, 0, 0.12);
+        setArm(L.armL, -1, -0.2, 1.15, 0.4);
+        setArm(L.armR, 1, -0.1, 1.05, 0.5);
+        setLeg(L.legL, -1, 0.1, 0.25, 0.15);
+        setLeg(L.legR, 1, -0.05, 0.1, 0.12);
       }
     },
   };

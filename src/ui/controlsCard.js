@@ -9,19 +9,29 @@ const k = (keys) => keys.split(' ').map((x) => `<kbd>${x.replace(/_/g, ' ')}</kb
 
 export const CONTROLS = {
   flight: {
-    title: 'FLYING THE KESTREL',
-    rows: () => [
+    get title() { return settings.difficulty.helpers ? 'FLYING THE KESTREL · SIMPLE' : 'FLYING THE KESTREL'; },
+    rows: () => settings.difficulty.helpers ? [
+      ['Mouse Arrows', 'Point the ship (it holds where you point)'],
+      ['W', 'Go: faster toward the station · hold for a burn'],
+      ['S', 'Slow down / back off'],
+      ['Space', 'Stop (near the station)'],
+      ['A D R F', 'Slide sideways'],
+      ['Q E', 'Roll'],
+      ['C', 'Camera: cockpit · chase · docking'],
+      ['M', 'Map'],
+      [', .', 'Time warp'],
+    ] : [
       ['W S', 'Thrust forward / back'],
       ['A D', 'Thrust left / right'],
       ['R F', 'Thrust up / down'],
       ['Mouse Arrows', 'Pitch and yaw'],
       ['Q E', 'Roll'],
       ['Z X', 'Main engine throttle up / down'],
-      ...(settings.difficulty.helpers ? [['K', 'Stop rotating (holds you steady)'], ['L', 'Stop drifting relative to the station']] : []),
       ['C', 'Camera: cockpit · chase · docking'],
       ['M', 'Map'],
       [', .', 'Time warp'],
     ],
+    get tip() { return settings.difficulty.helpers ? 'Near the station the computer lines you up with the port, matches her spin and slows you for capture. You only choose the speed.' : ''; },
   },
   float: {
     title: 'ZERO G',

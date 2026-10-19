@@ -24,7 +24,7 @@ export class SurfacePlayer {
     this.flashlight = false;
     this.mouse = { x: 0, y: 0 };
     this.interactables = [];
-    this.obstacles = [];  // { x, z, hx, hz, h } boxes in local coords (e.g. the Kestrel)
+    this.obstacles = (surface.colliders || []).map((c) => ({ x: c.x, z: c.z, hx: c.r, hz: c.r, y0: -1e4, h: c.top }));  // { x, z, hx, hz, h } boxes in local coords (e.g. the Kestrel)
     this.enabled = true;
     this.stepAcc = 0;
     const g = surface.planet.surfaceG;
