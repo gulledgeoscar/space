@@ -172,6 +172,7 @@ export class PilotController {
     const cmd = K.cmd;
     if (!this.enabled || this.lockControls || K.body.frozen) {
       cmd.t.set(0, 0, 0); cmd.r.set(0, 0, 0);
+      this.fbw = null; this.burn = null; this.aim = null;
       if (!this.enabled) cmd.throttle = 0;
       return;
     }
@@ -377,7 +378,7 @@ export class PilotController {
       } else if (!aligned) { cmd.throttle = 0; burn = 'turning'; }
       else {
         const aMain = KESTREL.main.thrust / K.body.mass;
-        if (left > 4 && this.allowMain) cmd.throttle = MathUtils.clamp(left / (aMain * 1.5), 0.08, 1);
+        if (left > 1.5 && this.allowMain) cmd.throttle = MathUtils.clamp(left / (aMain * 1.5), 0.08, 1);
         else { cmd.throttle = 0; cmd.t.z = -1; }
         burn = 'burning';
       }

@@ -440,9 +440,15 @@ export class OceanMission extends Mission {
       const dv = W.kestrel.dvUsed - this.dv0;
       const pro = K.body.vel.clone().sub(W.meridian.body.vel);
       hud.phaseSub = `departure Δv ${dv.toFixed(1)} / 35 m/s · window ${formatDuration(this.windowEnd - W.time)}`;
-      hud.setCue('burn', { dir: K.body.vel.clone().normalize(), icon: 'burn', cls: 'green', label: `DEPARTURE ${Math.max(0, 35 - dv).toFixed(1)} m/s`, clamp: true });
-      g.pilot.burnTarget = { dir: K.body.vel.clone().normalize(), dv: Math.max(0, 35 - dv), now: true, terminal: true, label: 'DEPARTURE' };
-      if (dv >= 35) { hud.setCue('burn', null); g.extraWarnings = []; hud.phaseText = null; hud.phaseSub = null; this.transferOut(); }
+      // prograde, angled a little away from the station so the burn never
+      // carries us back past her
+      const pg = K.body.vel.clone().normalize();
+      const away = K.body.pos.clone().sub(W.meridian.body.pos);
+      away.addScaledVector(pg, -away.dot(pg));
+      const depDir = pg.clone().addScaledVector(away.lengthSq() > 1 ? away.normalize() : away, 0.45).normalize();
+      hud.setCue('burn', { dir: depDir, icon: 'burn', cls: 'green', label: `DEPARTURE ${Math.max(0, 35 - dv).toFixed(1)} m/s`, clamp: true });
+      g.pilot.burnTarget = { dir: depDir, dv: Math.max(0, 35 - dv), now: true, terminal: true, label: 'DEPARTURE' };
+      if (dv >= 34.7) { hud.setCue('burn', null); g.extraWarnings = []; hud.phaseText = null; hud.phaseSub = null; this.transferOut(); }
       void pro;
     }
     if (this.phase === 'deorbit' || this.phase === 'entry') this.updateDescent(realDt);
