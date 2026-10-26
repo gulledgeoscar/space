@@ -212,6 +212,7 @@ export class Hud {
         `Chunks ${g.world.chunks.size} · Entities ${g.entities.list.length} · Bodies ${g.physics.bodies.size} · Proxies ${g.physics.proxies.size}`,
         `Draw calls ${r.calls} · Triangles ${(r.triangles / 1000).toFixed(0)}k`,
         `Block ticks ${g.ticks.queue.size} · Seed ${g.meta.seed}`,
+        `Workers ${g.world.pool.workers.length} · gen ${(g.world.pool.stats.genMs / Math.max(1, g.world.pool.stats.gen)).toFixed(1)} ms · mesh ${(g.world.pool.stats.meshMs / Math.max(1, g.world.pool.stats.mesh)).toFixed(1)} ms`,
         `Looking at ${g.tools.target ? `${BLOCKS[g.tools.target.id].name} ${g.tools.target.x} ${g.tools.target.y} ${g.tools.target.z}` : g.tools.targetEntity ? g.tools.targetEntity.entity.type : '-'}`,
       ].join('<br>');
     }

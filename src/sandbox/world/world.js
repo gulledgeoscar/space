@@ -12,11 +12,16 @@ class WorkerPool {
     this.queue = [];
     this.pending = new Map();
     this.nextId = 1;
+    this.stats = { gen: 0, mesh: 0, genMs: 0, meshMs: 0, waitMs: 0 };
     for (let i = 0; i < size; i++) {
       const w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
       w.onmessage = (e) => {
         const job = this.pending.get(e.data.id);
         this.pending.delete(e.data.id);
+        if (job) {
+          const t = job.msg.type;
+          if (t === 'gen' || t === 'mesh') { this.stats[t]++; this.stats[`${t}Ms`] += performance.now() - job.started; this.stats.waitMs += job.started - job.queued; }
+        }
         this.idle.push(w);
         job?.resolve(e.data);
         this.pump();
@@ -29,7 +34,7 @@ class WorkerPool {
   get busy() { return this.workers.length - this.idle.length; }
   run(msg, transfer = [], priority = false) {
     return new Promise((resolve) => {
-      const job = { msg, transfer, resolve };
+      const job = { msg, transfer, resolve, queued: performance.now() };
       if (priority) this.queue.unshift(job); else this.queue.push(job);
       this.pump();
     });
@@ -40,6 +45,7 @@ class WorkerPool {
       const w = this.idle.pop();
       const id = this.nextId++;
       job.msg.id = id;
+      job.started = performance.now();
       this.pending.set(id, job);
       w.postMessage(job.msg, job.transfer);
     }

@@ -312,8 +312,8 @@ export class Game {
         this.entities.afterLoad();
         if (!this.menus.open) this.menus.showStartHint();
       }
-      p.applyCamera(this.camera, false, dt);
-      this.renderFrame(dt);
+      // The loading screen covers everything, so skip rendering and let the
+      // workers have the CPU.
       this.input.endFrame();
       return;
     }
