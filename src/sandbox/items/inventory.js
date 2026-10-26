@@ -43,7 +43,7 @@ export class Inventory {
         tool('shotgun'), tool('rifle'), tool('sniper'), tool('grenade', 16), tool('flamethrower'), tool('lightning'), tool('laser'), tool('terraform'), tool('shape'),
         tool('paint'), tool('teleport'), tool('grapple'), tool('jetpack'), tool('resize'), tool('freeze'), tool('flint'), tool('fireworks', 16), tool('remover'),
         { kind: 'spawn', key: 'car', count: 1 }, { kind: 'spawn', key: 'horse', count: 1 }, { kind: 'spawn', key: 'plane', count: 1 }, { kind: 'spawn', key: 'helicopter', count: 1 },
-        { kind: 'spawn', key: 'pig', count: 1 }, { kind: 'spawn', key: 'zombie', count: 1 }, { kind: 'spawn', key: 'dummy', count: 1 }, { kind: 'spawn', key: 'castle', count: 1 }, { kind: 'spawn', key: 'nuke', count: 1 },
+        { kind: 'spawn', key: 'rocket', count: 1 }, { kind: 'spawn', key: 'zombie', count: 1 }, { kind: 'spawn', key: 'dummy', count: 1 }, { kind: 'spawn', key: 'castle', count: 1 }, { kind: 'spawn', key: 'nuke', count: 1 },
       ];
     }
   }

@@ -350,7 +350,7 @@ export class Tools {
       return true;
     }
     if (id === B.bed) { g.sleep(t); return true; }
-    if (id === B.chest) { g.menus.showChest(`${t.x},${t.y},${t.z}`); return true; }
+    if (id === B.chest) { g.menus.showChest(g.dimKey(`${t.x},${t.y},${t.z}`)); return true; }
     if (id === B.note_block) {
       const k = `${t.x},${t.y},${t.z}`;
       this.notes ??= new Map();

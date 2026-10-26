@@ -69,6 +69,8 @@ export const SPAWNS = {
   boat: { name: 'Boat', category: 'Vehicles', color: '#9a6a3a' },
   plane: { name: 'Plane', category: 'Vehicles', color: '#e0e0e0' },
   helicopter: { name: 'Helicopter', category: 'Vehicles', color: '#40a040' },
+  rocket: { name: 'Moon Rocket', category: 'Vehicles', color: '#eeeeee' },
+  alien: { name: 'Alien', category: 'Creatures', color: '#80e060' },
   // props
   crate: { name: 'Crate', category: 'Props', color: '#b08040' },
   barrel: { name: 'Explosive Barrel', category: 'Props', color: '#c03020' },

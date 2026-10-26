@@ -28,7 +28,7 @@ export class Villages {
     if (this.cache.has(key)) return this.cache.get(key);
     let plan = null;
     const g = this.gen;
-    if (!g.flat && hash3(cx, 77, cz, g.seed) < 0.45) {
+    if (!g.flat && !g.moon && hash3(cx, 77, cz, g.seed) < 0.45) {
       const rand = mulberry32(Math.floor(hash3(cx, 78, cz, g.seed) * 4294967296));
       const x = cx * CELL + 60 + Math.floor(rand() * (CELL - 120));
       const z = cz * CELL + 60 + Math.floor(rand() * (CELL - 120));

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { Mob, MOB_TYPES } from './mobs.js';
 import { Crate, Barrel, Ball, Melon, Domino, PhysBlock, Corpse, Ragdoll, PrimedTnt, FallingBlock, DroppedItem, Nuke } from './props.js';
-import { Car, Boat, Tank, Helicopter, Plane } from './vehicles.js';
+import { Car, Boat, Tank, Helicopter, Plane, Rocket } from './vehicles.js';
 import { Projectile } from './projectiles.js';
 import { BIOME } from '../world/generator.js';
 import { CHUNK, chunkKey } from '../world/constants.js';
@@ -70,6 +70,7 @@ export class EntityManager {
         case 'tank': e = new Tank(g); e.yaw = opts.yaw ?? 0; break;
         case 'helicopter': e = new Helicopter(g); e.yaw = opts.yaw ?? 0; break;
         case 'plane': e = new Plane(g); e.place(p, opts.yaw ?? 0); break;
+        case 'rocket': e = new Rocket(g); break;
         default: return null;
       }
       if (e.body && type !== 'car' && type !== 'truck') {
@@ -311,19 +312,21 @@ export class EntityManager {
       this.dormantSpawn(v.x + 4.5, v.z + 0.5, 'golem');
     }
     // Wild animals appear once per chunk, ever; saved ones come back from the save.
-    if (!g.mobSpawning || g.visitedChunks.has(c.key)) return;
-    g.visitedChunks.add(c.key);
+    const vk = g.dimKey(c.key);
+    if (!g.mobSpawning || g.visitedChunks.has(vk)) return;
+    g.visitedChunks.add(vk);
     if (Math.random() > 0.07) return;
     const x = c.cx * CHUNK + 4 + Math.floor(Math.random() * 8), z = c.cz * CHUNK + 4 + Math.floor(Math.random() * 8);
     const [, biome] = g.generator.column(x, z);
-    const options = {
+    const options = g.dim === 'moon' ? ['alien'] : {
       [BIOME.PLAINS]: ['cow', 'sheep', 'pig', 'horse', 'chicken'], [BIOME.FOREST]: ['pig', 'chicken', 'wolf', 'sheep'], [BIOME.BIRCH]: ['pig', 'chicken', 'sheep'],
       [BIOME.TAIGA]: ['wolf', 'sheep'], [BIOME.TUNDRA]: ['wolf'], [BIOME.JUNGLE]: ['chicken', 'pig'], [BIOME.SWAMP]: ['pig', 'chicken'],
       [BIOME.CHERRY]: ['sheep', 'pig'], [BIOME.MOUNTAINS]: ['sheep'], [BIOME.MUSHROOM]: ['cow'], [BIOME.DESERT]: [], [BIOME.BEACH]: ['chicken'], [BIOME.OCEAN]: ['fish'], [BIOME.FROZEN_OCEAN]: ['fish'],
     }[biome] ?? [];
     if (!options.length) return;
+    if (g.dim === 'moon' && Math.random() > 0.3) return;
     const type = options[(Math.random() * options.length) | 0];
-    const n = type === 'horse' || type === 'wolf' ? 2 : 2 + ((Math.random() * 3) | 0);
+    const n = type === 'horse' || type === 'wolf' ? 2 : type === 'alien' ? 1 + ((Math.random() * 2) | 0) : 2 + ((Math.random() * 3) | 0);
     // Spawn once the chunk's blocks are known.
     for (let i = 0; i < n; i++) {
       const sx = x + Math.floor((Math.random() - 0.5) * 6), sz = z + Math.floor((Math.random() - 0.5) * 6);
@@ -388,6 +391,7 @@ export class EntityManager {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnTimer = 2;
+    if (g.dim !== 'earth') return;
     if (!g.mobSpawning || g.difficulty === 'peaceful') {
       if (g.difficulty === 'peaceful') for (const e of this.list) if (e.hostile && !e.name) e.remove();
       return;
@@ -465,9 +469,15 @@ export class EntityManager {
     return n;
   }
 
-  dispose() {
+  // Forget every entity (when leaving a dimension; they were serialised first).
+  clearAll() {
     for (const e of this.list) e.dispose();
     this.list = [];
+    this.dormant.clear();
+  }
+
+  dispose() {
+    this.clearAll();
     this.avatar.dispose();
   }
 }

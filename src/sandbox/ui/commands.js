@@ -14,7 +14,7 @@ const HELP = [
   '/tp <x> <y> <z> | spawn · /locate <biome> · /seed · /heal · /fly · /noclip',
   '/kill <monsters|animals|items|all|me> · /fill <block> <radius> · /explode [power] · /nuke',
   '/rain <creature> [count] (it\'s raining pigs) · /speed <x> · /jump <x> · /timescale <x>',
-  '/clear (inventory) · /spawnpoint · /size <0.25-4>',
+  '/clear (inventory) · /spawnpoint · /size <0.25-4> · /travel <moon|earth>',
 ];
 
 function findItem(name) {
@@ -170,6 +170,13 @@ export function runCommand(g, text) {
         }
       }
       err('Not found nearby');
+      break;
+    }
+    case 'travel': case 'moon': case 'earth': {
+      const dim = cmd === 'travel' ? args[0] : cmd;
+      if (!['moon', 'earth'].includes(dim)) { err('Usage: /travel <moon|earth>'); break; }
+      if (dim === g.dim) { err(`You're already on ${dim === 'moon' ? 'the Moon' : 'Earth'}`); break; }
+      g.travel(dim);
       break;
     }
     case 'biome': { const [, b] = g.generator.column(Math.floor(p.box.x), Math.floor(p.box.z)); say(`You are in: ${BIOME_NAMES[b]}`); break; }

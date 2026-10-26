@@ -79,7 +79,7 @@ export class Weather {
 
   // Precipitation kind at the player: snow in cold biomes, none in deserts.
   localKind() {
-    if (this.type === 'clear') return 'none';
+    if (this.type === 'clear' || this.game.dim !== 'earth') return 'none';
     if (this.type === 'snow') return 'snow';
     const p = this.game.player.box;
     const [, biome] = this.game.generator.column(Math.floor(p.x), Math.floor(p.z));
@@ -252,7 +252,7 @@ export class Weather {
       if (this.ambientTimer < 0) {
         this.ambientTimer = 3 + Math.random() * 6;
         const night = g.sky.nightness > 0.6;
-        const outside = !covered && this.type === 'clear';
+        const outside = !covered && this.type === 'clear' && g.dim === 'earth';
         if (outside && cam.y > 40 && cam.y < 110) a.play(night ? 'cricket' : 'bird', { gain: 0.6 });
       }
     }

@@ -53,6 +53,8 @@ export class Game {
     this.chests = new Map(); // "x,y,z" -> 27 slots
     this.populatedVillages = new Set();
     this.visitedChunks = new Set();
+    this.dim = 'earth';
+    this.dimStates = {}; // per-dimension entities, gravity and spawn point
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixelRatio ?? 1.5));
@@ -73,8 +75,6 @@ export class Game {
     this.scene.add(this.hemi, this.sun, this.sun.target);
 
     this.input = new Input(canvas);
-    this.world = new World(this.scene, atlas, { seed: meta.seed, worldType: meta.worldType, renderDistance: settings.renderDistance ?? 8, storage });
-    this.generator = new Generator(meta.seed, { type: meta.worldType });
     this.sky = new Sky(this.scene);
     this.weather = new Weather(this);
     this.particles = new Particles(this);
@@ -87,16 +87,7 @@ export class Game {
     this.hud = new Hud(this);
     this.menus = new Menus(this);
     this.touch = new TouchControls(this);
-
-    this.world.onChange((x, y, z, id, old) => {
-      // Chests spill their contents; doors lose their other half.
-      if (old === B.chest && id !== B.chest) this.dropChest(x, y, z);
-      if (isDoor(old) && !isDoor(id)) for (const dy of [-1, 1]) if (isDoor(this.world.getBlock(x, y + dy, z))) this.world.setBlock(x, y + dy, z, 0);
-      this.ticks.onBlockChange(x, y, z, id, old);
-      this.physics.onBlockChange(x, y, z);
-    });
-    this.world.onChunkLoaded = (c) => { this.entities.onChunkLoaded(c); if (c.fromSave) this.ticks.scanChunk(c); };
-    this.world.onChunkUnload = (c) => this.entities.onChunkUnload(c);
+    this.createWorld('earth');
 
     this.input.onLockChange = (locked) => {
       if (!locked && this.running && !this.menus.open && !this.player.dead) this.menus.showPause();
@@ -113,6 +104,70 @@ export class Game {
   }
 
   get creative() { return this.mode !== 'survival'; }
+
+  // Chunk storage for a dimension: Earth keeps unprefixed keys (older saves).
+  dimStorage(dim) {
+    const st = this.storage;
+    if (!st) return null;
+    const pre = dim === 'earth' ? '' : `${dim}:`;
+    return { has: (k) => st.has(pre + k), loadChunk: (k) => st.loadChunk(pre + k), saveChunk: (k, d) => st.saveChunk(pre + k, d) };
+  }
+
+  // Key for per-position data (chests, visited chunks) unique across dimensions.
+  dimKey(k) { return this.dim === 'earth' ? k : `${this.dim}:${k}`; }
+
+  createWorld(dim) {
+    this.dim = dim;
+    const seed = dim === 'earth' ? this.meta.seed : `${this.meta.seed}:${dim}`;
+    const type = dim === 'moon' ? 'moon' : this.meta.worldType;
+    this.world = new World(this.scene, this.atlas, { seed, worldType: type, renderDistance: this.settings.renderDistance ?? 8, storage: this.dimStorage(dim) });
+    this.generator = new Generator(seed, { type });
+    this.world.onChange((x, y, z, id, old) => {
+      // Chests spill their contents; doors lose their other half.
+      if (old === B.chest && id !== B.chest) this.dropChest(x, y, z);
+      if (isDoor(old) && !isDoor(id)) for (const dy of [-1, 1]) if (isDoor(this.world.getBlock(x, y + dy, z))) this.world.setBlock(x, y + dy, z, 0);
+      this.ticks.onBlockChange(x, y, z, id, old);
+      this.physics.onBlockChange(x, y, z);
+    });
+    this.world.onChunkLoaded = (c) => { this.entities.onChunkLoaded(c); if (c.fromSave) this.ticks.scanChunk(c); };
+    this.world.onChunkUnload = (c) => this.entities.onChunkUnload(c);
+    this.sky.setMode(dim);
+    this.weather.auto = dim === 'earth';
+    if (dim !== 'earth') this.weather.set('clear', 1e9);
+  }
+
+  // Fly between Earth and the Moon. The rocket you're riding comes along.
+  async travel(dim) {
+    if (this.traveling || dim === this.dim) return;
+    this.traveling = true;
+    const p = this.player;
+    const rode = p.vehicle?.type === 'rocket';
+    if (p.vehicle) { const v = p.vehicle; this.entities.dismount(p); v.remove(); }
+    this.menus.setLoading(0, dim === 'moon' ? 'Flying to the Moon…' : 'Returning to Earth…');
+    this.loadingDone = false;
+    await this.save();
+    this.dimStates[this.dim] = { entities: this.entities.serialize(), gravity: this.gravity, spawn: p.spawn.toArray() };
+    this.entities.clearAll();
+    this.physics.reset();
+    this.ticks.queue.clear();
+    this.world.dispose();
+    this.createWorld(dim);
+    const st = this.dimStates[dim];
+    this.gravity = st?.gravity ?? (dim === 'moon' ? 4.6 : 28);
+    this.entities.pendingRestore = st?.entities ?? null;
+    if (st?.spawn) p.spawn.fromArray(st.spawn);
+    else p.spawn.set(p.box.x, 80, p.box.z);
+    p.teleport(p.box.x, 125, p.box.z);
+    if (rode) {
+      const r = this.entities.spawn('rocket', { x: p.box.x, y: 122, z: p.box.z });
+      r.vel.y = -25;
+      r.autoLand = true;
+      this.entities.mount(p, r);
+    }
+    this.arriving = true;
+    this.traveling = false;
+    this.message(dim === 'moon' ? 'Welcome to the Moon! Low gravity, no air… no problem.' : 'Back on Earth.', '#c0e0ff');
+  }
 
   holding(key) {
     const s = this.inventory.selected;
@@ -196,6 +251,11 @@ export class Game {
     if (s.chests) this.chests = new Map(Object.entries(s.chests));
     if (s.villages) this.populatedVillages = new Set(s.villages);
     if (s.visited) this.visitedChunks = new Set(s.visited);
+    if (s.dims) this.dimStates = s.dims;
+    if (s.dim && s.dim !== 'earth') {
+      this.world.dispose();
+      this.createWorld(s.dim);
+    }
     this.restored = true;
   }
 
@@ -219,6 +279,8 @@ export class Game {
       stats: this.stats,
       chests: Object.fromEntries(this.chests),
       villages: [...this.populatedVillages],
+      dim: this.dim,
+      dims: { ...this.dimStates, [this.dim]: { entities: [], gravity: this.gravity, spawn: p.spawn.toArray() } },
       visited: [...this.visitedChunks],
     };
   }
@@ -259,7 +321,7 @@ export class Game {
   }
 
   dropChest(x, y, z) {
-    const key = `${x},${y},${z}`;
+    const key = this.dimKey(`${x},${y},${z}`);
     const items = this.chests.get(key);
     this.chests.delete(key);
     if (!items) return;
@@ -362,10 +424,12 @@ export class Game {
       this.menus.setLoading(prog);
       if (prog >= 1 && this.world.isLoaded(p.box.x, p.box.z)) {
         this.loadingDone = true;
-        if (!this.restored) this.findSafeSpawn(p);
+        if (!this.restored && !this.arriving) this.findSafeSpawn(p);
         this.menus.setLoading(null);
         this.entities.afterLoad();
-        if (!this.menus.open) this.menus.showStartHint();
+        if (!this.menus.open && !this.arriving) this.menus.showStartHint();
+        if (this.arriving && !p.vehicle) this.findSafeSpawn(p);
+        this.arriving = false;
       }
       // The loading screen covers everything, so skip rendering and let the
       // workers have the CPU.

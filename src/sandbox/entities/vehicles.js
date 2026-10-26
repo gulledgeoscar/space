@@ -565,3 +565,101 @@ export class Plane extends ArcadeVehicle {
 }
 
 export { SOLID, boxBlocked, moveBody, Entity };
+
+// A rocket: hold Space to burn. Climb above the clouds to travel between
+// Earth and the Moon; on arrival it lands itself unless you take over.
+export class Rocket extends ArcadeVehicle {
+  constructor(game) {
+    super(game, 'rocket', 1.0, 6.5);
+    this.initVehicle(150);
+    this.usesShift = true;
+    this.cameraDistance = 14;
+    const white = 0xeeeeee, red = 0xd03030;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.0, 5.2, 16), lambert(this, white));
+    body.position.y = 3.2;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.97, 0.97, 0.4, 16), lambert(this, red));
+    band.position.y = 4.8;
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.8, 16), lambert(this, red));
+    nose.position.y = 6.7;
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 0.7, 12, 1, true), lambert(this, 0x333338, { side: THREE.DoubleSide }));
+    bell.position.y = 0.35;
+    const window1 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 12).rotateX(Math.PI / 2), glassMat());
+    window1.position.set(0, 4.1, 0.97);
+    this.mesh.add(body, band, nose, bell, window1);
+    for (let k = 0; k < 3; k++) {
+      const fin = boxMesh(this, 0.1, 1.6, 1.0, red);
+      const a = (k / 3) * Math.PI * 2;
+      fin.position.set(Math.sin(a) * 1.15, 1.2, Math.cos(a) * 1.15);
+      fin.rotation.y = a;
+      this.mesh.add(fin);
+    }
+    this.flame = new THREE.Mesh(new THREE.ConeGeometry(0.6, 3, 10).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color: 0xffa030, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.flame.position.y = -1.4;
+    this.flame.visible = false;
+    this.mesh.add(this.flame);
+    this.thrust = 0;
+    this.height = 7.5;
+    this.tilt = new THREE.Vector2();
+    this.stepHeight = 0;
+  }
+
+  seatPosition() { return new THREE.Vector3(this.pos.x, this.pos.y + 3.2, this.pos.z); }
+
+  drive(input, dt) {
+    const burn = input.key('Space');
+    this.thrust = burn ? 1 : input.key('ShiftLeft') ? 0 : this.autoLand ? this.thrust : 0;
+    if (burn || input.key('ShiftLeft')) this.autoLand = false;
+    const fwd = input.axis('KeyS', 'KeyW'), side = input.axis('KeyA', 'KeyD');
+    this.tilt.x += (fwd * 0.2 - this.tilt.x) * Math.min(1, dt * 2);
+    this.tilt.y += (side * 0.2 - this.tilt.y) * Math.min(1, dt * 2);
+    this.engineSound?.set(this.thrust ? 1.4 : 0.1, this.thrust ? 0.2 : 0.03);
+  }
+
+  update(dt) {
+    super.update(dt);
+    const g = this.game;
+    const ground = g.world.surfaceY(Math.floor(this.pos.x), Math.floor(this.pos.z), true);
+    // Arrival: fire the engine to touch down gently.
+    if (this.autoLand) {
+      const height = this.pos.y - ground;
+      const want = height > 30 ? -22 : height > 8 ? -8 : -2.5;
+      this.thrust = this.vel.y < want ? 1 : 0;
+      if (this.onGround) this.autoLand = false;
+    }
+    if (!this.rider && !this.autoLand) this.thrust = 0;
+    const accel = this.thrust ? g.gravity + 22 : 0;
+    this.vel.y += accel * dt;
+    // Tilting steers sideways.
+    const yaw = this.rider ? this.rider.yaw : 0;
+    const fx = -Math.sin(yaw) * this.tilt.x + Math.cos(yaw) * this.tilt.y;
+    const fz = -Math.cos(yaw) * this.tilt.x - Math.sin(yaw) * this.tilt.y;
+    this.vel.x += fx * 40 * dt * this.thrust;
+    this.vel.z += fz * 40 * dt * this.thrust;
+    this.vel.x *= 1 - Math.min(1, dt * (this.onGround ? 6 : 0.4));
+    this.vel.z *= 1 - Math.min(1, dt * (this.onGround ? 6 : 0.4));
+    this.vel.y = Math.max(-60, Math.min(45, this.vel.y));
+    const vy = this.vel.y;
+    // Above the world the rocket flies freely.
+    if (this.pos.y > 130) { this.pos.addScaledVector(this.vel, dt); this.vel.y -= g.gravity * dt; this.onGround = false; }
+    else this.physics(dt);
+    if (this.onGround && vy < -24) this.kill('crash');
+    if (this.thrust) {
+      for (let i = 0; i < 4; i++) g.particles.fire(this.pos.x + (Math.random() - 0.5) * 0.8, this.pos.y - 0.5 - Math.random() * 2, this.pos.z + (Math.random() - 0.5) * 0.8, 1.6);
+      if (Math.random() < 0.5) g.particles.smoke(this.pos.x, this.pos.y - 1, this.pos.z, 1.2, 3);
+      if (this.pos.y - ground < 8 && Math.random() < 0.5) g.particles.normal.emit(this.pos.x, ground + 1, this.pos.z, (Math.random() - 0.5) * 14, 1, (Math.random() - 0.5) * 14, 1.5, 0.8, 0.8, 0.8, 0.78, 0.5, 1.5, 0);
+    }
+    this.flame.visible = !!this.thrust;
+    this.flame.scale.y = 0.8 + Math.random() * 0.4;
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.set(-this.tilt.x, 0, this.tilt.y, 'YXZ');
+    if (this.rider) this.mesh.rotation.y = 0;
+    // Leaving the atmosphere.
+    if (this.rider && this.pos.y > 160 && this.vel.y > 0) g.travel(g.dim === 'earth' ? 'moon' : 'earth');
+    this.speedFov = Math.min(20, Math.abs(this.vel.y) * 0.4);
+    this.vehicleTick(dt);
+    this.updateLook(dt);
+  }
+
+  setScale() {}
+  serialize() { return this.wrecked ? null : { type: 'rocket', x: this.pos.x, y: this.pos.y, z: this.pos.z }; }
+}

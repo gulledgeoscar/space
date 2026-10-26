@@ -141,6 +141,49 @@ export class Sky {
     this.fogColor = new THREE.Color();
     this.sunDir = new THREE.Vector3();
     this.nightness = 0;
+    this.mode = 'earth';
+
+    // Earth, seen from the Moon.
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#2a5ab0'; g.fillRect(0, 0, 128, 64);
+    for (let i = 0; i < 40; i++) {
+      g.fillStyle = Math.random() < 0.6 ? '#4a8a3a' : '#c8b878';
+      g.fillRect((Math.random() * 120) | 0, (8 + Math.random() * 48) | 0, 4 + ((Math.random() * 14) | 0), 3 + ((Math.random() * 8) | 0));
+    }
+    g.fillStyle = 'rgba(255,255,255,0.8)';
+    for (let i = 0; i < 30; i++) g.fillRect((Math.random() * 124) | 0, (Math.random() * 60) | 0, 3 + ((Math.random() * 10) | 0), 2);
+    g.fillStyle = '#f0f4f8'; g.fillRect(0, 0, 128, 5); g.fillRect(0, 59, 128, 5);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    this.earth = new THREE.Mesh(new THREE.SphereGeometry(70, 24, 16), new THREE.MeshLambertMaterial({ map: tex, fog: false, emissive: 0x0a1a3a }));
+    this.earth.position.set(250, 380, -560);
+    this.earth.renderOrder = -9;
+    this.earth.visible = false;
+    this.group.add(this.earth);
+  }
+
+  // No air on the Moon: a black sky full of stars, harsh sunlight, Earth overhead.
+  updateMoon(hours, camera, dt) {
+    const theta = ((hours - 6) / 24) * Math.PI * 2;
+    this.sunDir.set(Math.cos(theta), Math.sin(theta), 0.25).normalize();
+    const day = THREE.MathUtils.smoothstep(this.sunDir.y, -0.1, 0.1);
+    this.uniforms.zenith.value.setRGB(0.005, 0.005, 0.012);
+    this.uniforms.horizon.value.setRGB(0.02, 0.02, 0.03);
+    this.uniforms.sunDir.value.copy(this.sunDir);
+    this.uniforms.sunGlow.value.setRGB(0.3, 0.3, 0.3).multiplyScalar(day);
+    this.daylight = 0.18 + 0.82 * day;
+    this.nightness = 1 - day;
+    this.fogColor.setRGB(0.02, 0.02, 0.03);
+    this.group.position.copy(camera.position);
+    this.sun.position.copy(this.sunDir).multiplyScalar(800);
+    this.sun.lookAt(camera.position);
+    this.sun.material.opacity = 1;
+    this.starMat.opacity = 1;
+    this.stars.rotation.z = theta * 0.1;
+    this.earth.rotation.y += dt * 0.02;
   }
 
   discTexture(inner, outer) {
@@ -173,7 +216,16 @@ export class Sky {
   }
 
   // hours: 0..24. storm: 0..1 overcast amount.
+  setMode(mode) {
+    this.mode = mode;
+    const moon = mode === 'moon';
+    this.clouds.visible = !moon;
+    this.earth.visible = moon;
+    this.moon.visible = !moon;
+  }
+
   update(hours, camera, storm, dt) {
+    if (this.mode === 'moon') return this.updateMoon(hours, camera, dt);
     const theta = ((hours - 6) / 24) * Math.PI * 2;
     this.sunDir.set(Math.cos(theta), Math.sin(theta), 0.25).normalize();
     const elev = this.sunDir.y;

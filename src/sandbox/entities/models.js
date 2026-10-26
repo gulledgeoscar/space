@@ -101,6 +101,7 @@ export const FACES = {
   spider: () => face('spider', '#2a2020', (g) => { px(g, '#e02020', 1, 2); px(g, '#e02020', 6, 2); px(g, '#e02020', 2, 3); px(g, '#e02020', 5, 3); px(g, '#e02020', 3, 2, 2, 1); }),
   golem: () => face('golem', '#c8c4bc', (g) => { px(g, '#5a4a3a', 1, 1, 6, 1); px(g, '#a02020', 2, 3); px(g, '#a02020', 5, 3); px(g, '#a8a49c', 3, 4, 2, 3); }),
   player: () => face('player', '#d8a888', (g) => { px(g, '#4a2a10', 0, 0, 8, 2); px(g, '#4a2a10', 0, 2); px(g, '#4a2a10', 7, 2); px(g, '#fff', 1, 4, 2, 1); px(g, '#3050a0', 2, 4); px(g, '#fff', 5, 4, 2, 1); px(g, '#3050a0', 5, 4); px(g, '#a06050', 3, 6, 2, 1); }),
+  alien: () => face('alien', '#80d060', (g) => { px(g, '#101010', 1, 3, 2, 3); px(g, '#101010', 5, 3, 2, 3); px(g, '#ffffff', 1, 3); px(g, '#ffffff', 5, 3); px(g, '#4a8a3a', 3, 6, 2, 1); }),
   dummy: () => face('dummy', '#e0c090', (g) => { px(g, '#000', 2, 3); px(g, '#000', 5, 3); px(g, '#c03030', 2, 5, 4, 1); }),
 };
 
@@ -252,6 +253,12 @@ export function buildModel(entity, type) {
     case 'golem': {
       const m = humanoid(entity, { skin: 0xc8c4bc, bodyColor: 0xc0bcb4, legColor: 0xb8b4ac, armColor: 0xc8c4bc, face: FACES.golem(), width: 1.0, depth: 0.6, legH: 0.9, bodyH: 1.0, limbW: 0.38, armW: 0.32, armH: 1.6, headSize: 0.55 });
       const vine = box(null, 0.6, 0.5, 0.05, 0x3a7a2a); vine.position.set(0.1, 1.5, 0.31); m.root.add(vine);
+      return m;
+    }
+    case 'alien': {
+      const m = humanoid(entity, { skin: 0x80d060, bodyColor: 0x8a8aa0, legColor: 0x6a6a80, armColor: 0x80d060, face: FACES.alien(), limbW: 0.14, legH: 0.6, bodyH: 0.55, width: 0.4, depth: 0.2, headSize: 0.62 });
+      const ant = box(entity, 0.05, 0.3, 0.05, 0x80d060); ant.position.set(0, 0.75, 0); m.head.add(ant);
+      const tip = new THREE.Mesh(boxGeo(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0xff60ff })); tip.position.set(0, 0.92, 0); m.head.add(tip);
       return m;
     }
     case 'player': {

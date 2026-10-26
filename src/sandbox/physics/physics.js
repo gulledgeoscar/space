@@ -62,6 +62,13 @@ export class Physics {
     }
   }
 
+  reset() {
+    for (const b of [...this.bodies]) this.remove(b);
+    for (const p of this.proxies.values()) this.world.removeBody(p.body);
+    this.proxies.clear();
+    this.deferred = [];
+  }
+
   onBlockChange(x, y, z) {
     const k = `${x},${y},${z}`;
     const p = this.proxies.get(k);

@@ -7,11 +7,11 @@ import { Villages } from './villages.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH: 4, TAIGA: 5, TUNDRA: 6, DESERT: 7,
-  BADLANDS: 8, JUNGLE: 9, SWAMP: 10, MOUNTAINS: 11, PEAKS: 12, CHERRY: 13, MUSHROOM: 14, FROZEN_OCEAN: 15,
+  BADLANDS: 8, JUNGLE: 9, SWAMP: 10, MOUNTAINS: 11, PEAKS: 12, CHERRY: 13, MUSHROOM: 14, FROZEN_OCEAN: 15, MOON: 16,
 };
 export const BIOME_NAMES = [
   'Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Desert',
-  'Badlands', 'Jungle', 'Swamp', 'Mountains', 'Snowy Peaks', 'Cherry Grove', 'Mushroom Fields', 'Frozen Ocean',
+  'Badlands', 'Jungle', 'Swamp', 'Mountains', 'Snowy Peaks', 'Cherry Grove', 'Mushroom Fields', 'Frozen Ocean', 'The Moon',
 ];
 
 const smooth = (e0, e1, x) => {
@@ -25,6 +25,7 @@ export class Generator {
     this.seedStr = String(seed);
     this.seed = hashSeed(seed);
     this.flat = options.type === 'flat';
+    this.moon = options.type === 'moon';
     this.cont = new Simplex(`${seed}:cont`);
     this.mount = new Simplex(`${seed}:mount`);
     this.detail = new Simplex(`${seed}:detail`);
@@ -39,7 +40,48 @@ export class Generator {
   }
 
   // Returns [height, biome] for a world column.
+  // Moon: rolling regolith pocked with craters on a 64-block grid.
+  moonColumn(x, z) {
+    let h = 52 + this.cont.fbm2(x / 400, z / 400, 4) * 14 + this.detail.fbm2(x / 50, z / 50, 3) * 3;
+    const cx0 = Math.floor(x / 64), cz0 = Math.floor(z / 64);
+    for (let cz = cz0 - 1; cz <= cz0 + 1; cz++) for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
+      const r0 = hash3(cx, 3, cz, this.seed + 900);
+      if (r0 > 0.7) continue;
+      const r = 5 + hash3(cx, 4, cz, this.seed + 901) ** 2 * 28;
+      const ox = cx * 64 + 8 + hash3(cx, 5, cz, this.seed + 902) * 48, oz = cz * 64 + 8 + hash3(cx, 6, cz, this.seed + 903) * 48;
+      const d = Math.hypot(x - ox, z - oz) / r;
+      if (d < 1) h -= r * 0.4 * (1 - d * d);
+      h += r * 0.12 * Math.exp(-(((d - 1) / 0.25) ** 2));
+    }
+    return [Math.max(6, Math.min(HEIGHT - 10, Math.round(h))), BIOME.MOON];
+  }
+
+  generateMoon(cx, cz) {
+    const data = new Uint8Array(CHUNK_VOLUME);
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const s = this.seed;
+    for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
+      const wx = x0 + x, wz = z0 + z;
+      const [h] = this.moonColumn(wx, wz);
+      data[index(x, 0, z)] = B.bedrock;
+      for (let y = 1; y <= h; y++) {
+        let id = y > h - 2 ? B.moon_dust : B.moon_rock;
+        if (id === B.moon_rock) {
+          const o = this.ore(wx, y, wz, BIOME.MOUNTAINS);
+          id = o === B.stone || o === B.gravel ? B.moon_rock : o === B.coal_ore ? B.basalt : o;
+        }
+        data[index(x, y, z)] = id;
+      }
+      // Glowing crystal clusters and rare alien wreckage.
+      const r = hash3(wx, 11, wz, s + 300);
+      if (r < 0.006) data[index(x, h + 1, z)] = B.crystal;
+      else if (r > 0.9996) for (let k = 1; k <= 3; k++) data[index(x, h + k, z)] = B.alien_metal;
+    }
+    return data;
+  }
+
   column(x, z) {
+    if (this.moon) return this.moonColumn(x, z);
     if (this.flat) return [SEA_LEVEL + 4, BIOME.PLAINS];
     const c = this.cont.fbm2(x / 900, z / 900, 4) * 1.4 + 0.22;
     const mMask = smooth(0.05, 0.55, this.mount.fbm2(x / 700 + 100, z / 700, 3));
@@ -80,6 +122,7 @@ export class Generator {
   }
 
   generate(cx, cz) {
+    if (this.moon) return this.generateMoon(cx, cz);
     const data = new Uint8Array(CHUNK_VOLUME);
     const P = 4; // padding so trees can overhang chunk borders
     const W = CHUNK + P * 2;

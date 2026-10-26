@@ -18,6 +18,7 @@ export const MOB_TYPES = {
   bomber: { hp: 20, speed: 2.8, hw: 0.4, h: 1.6, sound: 'fuse', hostile: true, bomber: true, drops: ['gunpowder'] },
   spider: { hp: 16, speed: 4.6, hw: 0.65, h: 0.9, sound: 'spider', hostile: true, attack: 2, climbs: true, drops: ['string'] },
   fish: { hp: 3, speed: 2.5, hw: 0.2, h: 0.4, sound: 'splash', aquatic: true, drops: ['steak'] },
+  alien: { hp: 14, speed: 2.6, hw: 0.3, h: 1.6, sound: 'villager', drops: ['emerald?'] },
   golem: { hp: 100, speed: 2.4, hw: 0.7, h: 2.7, sound: 'hit', guardian: true, attack: 12 },
 };
 

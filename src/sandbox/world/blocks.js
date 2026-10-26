@@ -187,6 +187,11 @@ def(128, 'bed', 'Bed', { tex: { top: 'bed_top', side: 'bed_side', bottom: 'plank
 def(129, 'chest', 'Chest', { tex: { top: 'chest_top', side: 'chest_side' }, texFront: 'chest_front', hardness: 1, sound: 'wood', category: 'Decor', color: 0xa07030, flammable: true });
 def(130, 'note_block', 'Note Block', { tex: 'note_block', hardness: 0.8, sound: 'wood', category: 'Special', color: 0x7a4a2a });
 
+def(131, 'moon_rock', 'Moon Rock', { hardness: 1.5, category: 'Nature', color: 0x9a9a98 });
+def(132, 'moon_dust', 'Moon Dust', { hardness: 0.5, sound: 'sand', category: 'Nature', color: 0xc4c2bc });
+def(133, 'crystal', 'Moon Crystal', { shape: 'cross', light: 12, hardness: 0.3, sound: 'glass', category: 'Light', color: 0xb070ff });
+def(134, 'alien_metal', 'Alien Alloy', { hardness: 3, blast: 8, sound: 'metal', category: 'Decor', color: 0x70e0d0 });
+
 // Flowing liquids. Level 1 is next to the source (or falling), 7 is the thinnest.
 export const WATER_FLOW = 200; // ids 201..207
 export const LAVA_FLOW = 210;  // ids 211..217

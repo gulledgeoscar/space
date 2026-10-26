@@ -44,8 +44,9 @@ export class Menus {
     this.root.remove();
   }
 
-  setLoading(p) {
+  setLoading(p, title) {
     if (p === null) { this.loadingEl.style.display = 'none'; return; }
+    if (title) this.loadingEl.querySelector('.loading-title').textContent = title;
     this.loadingEl.style.display = 'flex';
     this.loadingEl.querySelector('.bar div').style.width = `${Math.round(p * 100)}%`;
   }

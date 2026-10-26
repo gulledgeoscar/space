@@ -362,6 +362,13 @@ const PAINTERS = {
   chest_side: (t) => { t.noise(0xa07030, 0.06).border(0x5a3a18); t.rect(0, 5, 16, 1, 0x5a3a18); return t; },
   chest_front: (t) => { PAINTERS.chest_side(t); t.rect(7, 4, 2, 4, 0xd0d0d0); t.rect(7, 6, 2, 1, 0x404040); return t; },
   note_block: (t) => { t.noise(0x7a4a2a, 0.08).border(0x4a2a12); t.rect(6, 3, 2, 8, 0x1a1a1a); t.rect(8, 3, 3, 2, 0x1a1a1a); t.rect(4, 9, 4, 3, 0x1a1a1a); return t; },
+  moon_rock: (t) => t.noise(0x8e8e8c, 0.12).blobs(0x6e6e6c, 7, 0.1).speckle(0xb0b0ae, 10),
+  moon_dust: (t) => t.noise(0xc4c2bc, 0.06).speckle(0xa8a6a0, 25).speckle(0xdcdad4, 10),
+  crystal: (t) => cross(t, () => {
+    const c = [[7, 2, 2, 13], [4, 6, 2, 9], [10, 5, 2, 10], [2, 10, 2, 5], [12, 9, 2, 6]];
+    for (const [x, y, w, h] of c) { t.rect(x, y, w, h, 0xb070ff); t.rect(x, y, 1, h, 0xe0b0ff); t.set(x, y - 1, [240, 220, 255]); }
+  }),
+  alien_metal: (t) => { t.noise(0x50b8b0, 0.05).border(0x2a7a74); t.rect(3, 3, 10, 1, 0xa0fff0); t.rect(3, 12, 10, 1, 0xa0fff0); t.rect(7, 6, 2, 4, 0x2a7a74); return t; },
   checker: (t) => { for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) t.set(x, y, ((x >> 2) + (y >> 2)) % 2 ? [30, 30, 30] : [235, 235, 235]); return t; },
   prismarine: (t) => t.noise(0x5aa898, 0.12).blobs(0x3a8878, 6).speckle(0x8ad0c0, 8),
   sea_lantern: (t) => { t.noise(0xd0f0e8, 0.06).border(0x8ab8b0); t.rect(4, 4, 8, 8, 0xf0fff8); t.rect(6, 6, 4, 4, 0xffffff); return t; },

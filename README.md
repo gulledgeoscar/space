@@ -204,6 +204,7 @@ A second game lives in this repo: **LIMITLESS**, a first-person voxel sandbox wh
 - **Vehicles:** car, monster truck, tank, boat, plane and helicopter. The helicopter fires rockets, the plane has guns and the tank fires shells.
 - **Props:** crates, explosive barrels, beach and bowling balls, watermelons, dominoes, a jointed ragdoll dummy, and a nuke.
 - **Portal gun** (in through the blue, out of the orange), **signs** you write on, and **natural disasters**: a tornado that rips up the ground and flings everything, a meteor shower, and an earthquake.
+- **Fly to the Moon** in a rocket: climb above the clouds and you arrive on the Moon. It has low gravity, craters, glowing crystals, alien wreckage and aliens, with Earth hanging in a black, starry sky. Fly back the same way. Both worlds are saved.
 - **Instant structures:** house, tower, castle, pyramid with a trapped treasure room, skyscraper, giant tree, glass dome, stunt ramp, arena, swimming pool, and a volcano with lava running down it.
 - **Control the world** with the **G** menu or commands: time of day and day length, weather (rain, snow, thunderstorms with lightning), gravity (Moon, Mars, Earth, Jupiter), slow motion and frozen time, game mode (creative, survival, spectator), difficulty, walk speed and jump height.
 - **Survival mode** adds health, hunger, air, fall damage, mining times and item drops. Ores drop coal, iron, gold, diamonds and emeralds, and monsters drop gunpowder and string. Craft blocks, tools, weapons, a jetpack, a gravity gun and even a car from the inventory screen.
