@@ -51,6 +51,8 @@ export class Game {
     this.shake = 0;
     this.stats = { blocksBroken: 0, blocksPlaced: 0, kills: 0, explosions: 0 };
     this.chests = new Map(); // "x,y,z" -> 27 slots
+    this.populatedVillages = new Set();
+    this.visitedChunks = new Set();
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixelRatio ?? 1.5));
@@ -93,7 +95,7 @@ export class Game {
       this.ticks.onBlockChange(x, y, z, id, old);
       this.physics.onBlockChange(x, y, z);
     });
-    this.world.onChunkLoaded = (c) => this.entities.onChunkLoaded(c);
+    this.world.onChunkLoaded = (c) => { this.entities.onChunkLoaded(c); if (c.fromSave) this.ticks.scanChunk(c); };
     this.world.onChunkUnload = (c) => this.entities.onChunkUnload(c);
 
     this.input.onLockChange = (locked) => {
@@ -192,6 +194,8 @@ export class Game {
     if (s.entities) this.entities.pendingRestore = s.entities;
     if (s.stats) this.stats = { ...this.stats, ...s.stats };
     if (s.chests) this.chests = new Map(Object.entries(s.chests));
+    if (s.villages) this.populatedVillages = new Set(s.villages);
+    if (s.visited) this.visitedChunks = new Set(s.visited);
     this.restored = true;
   }
 
@@ -214,6 +218,8 @@ export class Game {
       entities: this.entities.serialize(),
       stats: this.stats,
       chests: Object.fromEntries(this.chests),
+      villages: [...this.populatedVillages],
+      visited: [...this.visitedChunks],
     };
   }
 
@@ -237,6 +243,7 @@ export class Game {
     this.menus.dispose();
     this.tools.dispose();
     this.touch.dispose();
+    this.input.dispose();
     this.renderer.dispose();
   }
 
@@ -280,6 +287,7 @@ export class Game {
       explosion: 'blew up', void: 'fell out of the world', mob: 'was slain', starve: 'starved to death', magma: 'discovered the floor was lava',
       lightning: 'was struck by lightning', generic: 'died',
     };
+    if (this.player.vehicle) this.entities.dismount(this.player);
     this.message(`You ${msgs[cause] ?? 'died'}.`, '#ff6060');
     if (!this.keepInventory) this.inventory.dropAll();
     this.input.unlock();

@@ -138,9 +138,11 @@ export class Car extends VehicleMixin(RigidEntity) {
     this.speedFov = 0;
     body.addEventListener('collide', (e) => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-      if (v > 12) this.damage((v - 12) * 4, 'crash');
       const other = e.body?.entity;
-      if (other && other.kind === 'mob' && v > 5) other.damage(v * 1.5, 'crash', this.rider ?? this);
+      game.physics.defer(() => {
+        if (v > 12) this.damage((v - 12) * 4, 'crash');
+        if (other && other.kind === 'mob' && v > 5) other.damage(v * 1.5, 'crash', this.rider ?? this);
+      });
     });
   }
 
@@ -232,7 +234,10 @@ export class Car extends VehicleMixin(RigidEntity) {
 
   dispose() {
     this.vehicle.removeFromWorld(this.game.physics.world);
-    for (const w of this.wheelMeshes) this.game.scene.remove(w);
+    for (const w of this.wheelMeshes) {
+      this.game.scene.remove(w);
+      w.traverse((o) => o.geometry?.dispose());
+    }
     super.dispose();
   }
 

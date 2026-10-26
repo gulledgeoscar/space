@@ -46,6 +46,19 @@ export class BlockTicks {
     if (LIQUID[id] || id === B.fire || BLOCKS[id]?.gravity || id === B.tnt) this.schedule(x, y, z, this.delayFor(id));
   }
 
+  // Saved chunks may hold fire, flowing liquid or unsupported sand whose
+  // pending updates were lost when the chunk unloaded: schedule them again.
+  scanChunk(c) {
+    const d = c.data;
+    const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
+    for (let i = 0; i < d.length; i++) {
+      const id = d[i];
+      if (id !== B.fire && !(LIQUID[id] && LEVEL[id] > 0) && !BLOCKS[id]?.gravity) continue;
+      const x = i % CHUNK, z = ((i / CHUNK) | 0) % CHUNK, y = (i / (CHUNK * CHUNK)) | 0;
+      this.schedule(x0 + x, y, z0 + z, this.delayFor(id) + Math.random() * 0.5);
+    }
+  }
+
   update(dt) {
     if (dt <= 0) return;
     this.now += dt;

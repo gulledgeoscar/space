@@ -83,6 +83,7 @@ export class WorldStorage {
     this.volume = chunkVolume;
     this.saved = new Set(meta.chunkKeys || []);
     this.writes = Promise.resolve();
+    this.pending = new Map();
   }
 
   static async open(meta, chunkVolume) {
@@ -101,13 +102,20 @@ export class WorldStorage {
   has(key) { return this.saved.has(key); }
 
   loadChunk(key) {
+    // A write may still be queued: serve the newest data from memory.
+    const pending = this.pending.get(key);
+    if (pending) return Promise.resolve(pending.slice());
     return tx('chunks', 'readonly', (s) => s.get(`${this.id}|${key}`)).then((enc) => (enc ? rleDecode(enc, this.volume) : null));
   }
 
   saveChunk(key, data) {
     this.saved.add(key);
-    const enc = rleEncode(data);
-    this.writes = this.writes.then(() => tx('chunks', 'readwrite', (s) => s.put(enc, `${this.id}|${key}`))).catch(() => {});
+    const copy = data.slice();
+    this.pending.set(key, copy);
+    const enc = rleEncode(copy);
+    this.writes = this.writes.then(() => tx('chunks', 'readwrite', (s) => s.put(enc, `${this.id}|${key}`)))
+      .then(() => { if (this.pending.get(key) === copy) this.pending.delete(key); })
+      .catch(() => {});
     return this.writes;
   }
 

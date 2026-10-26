@@ -11,6 +11,7 @@ import { B, SOLID, LIQUID } from '../world/blocks.js';
 import { PlayerAvatar } from './avatar.js';
 import { Dragon } from './dragon.js';
 
+const MAX_SAVED = 2000;
 const ray = new THREE.Ray();
 const box3 = new THREE.Box3();
 const hitPoint = new THREE.Vector3();
@@ -125,7 +126,8 @@ export class EntityManager {
       if (!g.world.isLoaded(e.pos.x, e.pos.z) && e.kind !== 'projectile') continue;
       const far = Math.abs(e.pos.x - p.box.x) > view || Math.abs(e.pos.z - p.box.z) > view;
       if (far && e.kind === 'mob') continue;
-      e.update(e.kind === 'projectile' || e === p.vehicle ? (dt || 0) : dt);
+      // What you ride keeps up with you in slow motion.
+      e.update(e === p.vehicle ? realDt : dt);
     }
     // Sweep out removed entities.
     let w = 0;
@@ -291,6 +293,9 @@ export class EntityManager {
     const g = this.game;
     // Villagers (and a golem to guard them) move into new villages.
     for (const v of g.generator.villages.centersIn(c.cx, c.cz)) {
+      const vk = `${v.x},${v.z}`;
+      if (g.populatedVillages.has(vk)) continue;
+      g.populatedVillages.add(vk);
       const n = 4 + Math.floor(Math.random() * 4);
       for (let i = 0; i < n; i++) {
         const b = v.buildings[1 + (i % (v.buildings.length - 1))] ?? v.buildings[0];
@@ -299,7 +304,9 @@ export class EntityManager {
       }
       this.dormantSpawn(v.x + 4.5, v.z + 0.5, 'golem');
     }
-    if (!g.mobSpawning) return;
+    // Wild animals appear once per chunk, ever; saved ones come back from the save.
+    if (!g.mobSpawning || g.visitedChunks.has(c.key)) return;
+    g.visitedChunks.add(c.key);
     if (Math.random() > 0.07) return;
     const x = c.cx * CHUNK + 4 + Math.floor(Math.random() * 8), z = c.cz * CHUNK + 4 + Math.floor(Math.random() * 8);
     const [, biome] = g.generator.column(x, z);
@@ -349,6 +356,25 @@ export class EntityManager {
       e.removed = true;
     }
     if (out.length) this.dormant.set(c.key, (this.dormant.get(c.key) ?? []).concat(out));
+    this.pruneDormant();
+  }
+
+  // Wild animals parked far away are forgotten once too many pile up.
+  pruneDormant() {
+    let total = 0;
+    for (const arr of this.dormant.values()) total += arr.length;
+    if (total < 1500) return;
+    const p = this.game.player.box;
+    const keys = [...this.dormant.keys()].map((k) => {
+      const [cx, cz] = k.split(',').map(Number);
+      return [k, (cx * CHUNK - p.x) ** 2 + (cz * CHUNK - p.z) ** 2];
+    }).sort((a, b) => b[1] - a[1]);
+    for (const [k] of keys) {
+      const kept = this.dormant.get(k).filter((s) => !MOB_TYPES[s.type] || s.tamed || s.name || s.type === 'villager' || s.type === 'golem');
+      total -= this.dormant.get(k).length - kept.length;
+      if (kept.length) this.dormant.set(k, kept); else this.dormant.delete(k);
+      if (total < 1000) break;
+    }
   }
 
   naturalSpawn(dt) {
@@ -396,10 +422,13 @@ export class EntityManager {
       if (e.hostile && !e.name) continue;
       const s = e.serialize();
       if (s) out.push(s);
-      if (out.length > 600) break;
     }
     for (const arr of this.dormant.values()) out.push(...arr);
-    return out.slice(0, 1500);
+    if (out.length <= MAX_SAVED) return out;
+    // Over the cap: keep what the player cares about (vehicles, pets, named
+    // creatures, villagers, props) before wild animals.
+    const rank = (s) => (MOB_TYPES[s.type] && !s.tamed && !s.name && s.type !== 'villager' && s.type !== 'golem' ? 1 : 0);
+    return out.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_SAVED);
   }
 
   restoreOne(s) {

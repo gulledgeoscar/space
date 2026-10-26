@@ -17,13 +17,15 @@ export class Input {
     this.lastTap = new Map();
     this.doubleTapped = new Set();
     this.lastMouseMove = 0;
+    this.listeners = [];
     // Touch and gamepad play without pointer lock ("virtual" lock).
     this.virtual = false;
     this.analog = { x: 0, y: 0 };
     this.padPrev = [];
     this.padSprint = false;
 
-    window.addEventListener('keydown', (e) => {
+    const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); this.listeners.push([target, type, fn, opts]); };
+    on(window, 'keydown', (e) => {
       if (this.typing || (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'F3', 'F2', 'Slash', 'KeyT'].includes(e.code) || (e.ctrlKey && ['KeyS', 'KeyW', 'KeyD'].includes(e.code))) e.preventDefault();
       if (!this.down.has(e.code)) {
@@ -34,30 +36,36 @@ export class Input {
       }
       this.down.add(e.code);
     });
-    window.addEventListener('keyup', (e) => {
+    on(window, 'keyup', (e) => {
       this.down.delete(e.code);
       this.released.add(e.code);
     });
-    window.addEventListener('blur', () => { this.down.clear(); this.buttons = 0; });
-    window.addEventListener('mousemove', (e) => {
+    on(window, 'blur', () => { this.down.clear(); this.buttons = 0; });
+    on(window, 'mousemove', (e) => {
       if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; this.lastMouseMove = performance.now(); }
     });
-    canvas.addEventListener('mousedown', (e) => {
+    on(canvas, 'mousedown', (e) => {
       if (!this.locked) return;
       this.buttons |= 1 << e.button;
       this.mousePressed.add(e.button);
     });
-    window.addEventListener('mouseup', (e) => {
+    on(window, 'mouseup', (e) => {
       if (this.buttons & (1 << e.button)) this.mouseReleased.add(e.button);
       this.buttons &= ~(1 << e.button);
     });
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    window.addEventListener('wheel', (e) => { if (this.locked) this.wheel += Math.sign(e.deltaY); }, { passive: true });
-    document.addEventListener('pointerlockchange', () => {
+    on(canvas, 'contextmenu', (e) => e.preventDefault());
+    on(window, 'wheel', (e) => { if (this.locked) this.wheel += Math.sign(e.deltaY); }, { passive: true });
+    on(document, 'pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
       if (!this.locked) { this.buttons = 0; this.down.clear(); }
       this.onLockChange?.(this.locked);
     });
+  }
+
+  dispose() {
+    for (const [t, type, fn, opts] of this.listeners) t.removeEventListener(type, fn, opts);
+    this.listeners = [];
+    this.onLockChange = null;
   }
 
   lock() {

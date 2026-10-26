@@ -333,7 +333,12 @@ export class World {
   saveAll() {
     if (!this.storage) return Promise.resolve();
     const jobs = [];
-    for (const c of this.chunks.values()) if (c.modified && c.data) jobs.push(this.storage.saveChunk(c.key, c.data));
+    // Only chunks that changed since their last save.
+    for (const c of this.chunks.values()) {
+      if (!c.modified || !c.data || c.savedVersion === c.version) continue;
+      c.savedVersion = c.version;
+      jobs.push(this.storage.saveChunk(c.key, c.data));
+    }
     return Promise.all(jobs);
   }
 

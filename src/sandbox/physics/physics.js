@@ -22,6 +22,9 @@ export class Physics {
     this.proxyShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
     this.slabShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.25, 0.5));
     this.bodies = new Set();
+    // Work queued by collision callbacks, run after the step: changing the
+    // body list during cannon's step corrupts its loops.
+    this.deferred = [];
     this.time = 0;
     this.accum = 0;
   }
@@ -92,7 +95,22 @@ export class Physics {
       if (this.time - p.seen > PROXY_TTL) { this.world.removeBody(p.body); this.proxies.delete(k); }
     }
     this.world.step(1 / 60, dt, 4);
+    const jobs = this.deferred;
+    this.deferred = [];
+    for (const fn of jobs) fn();
   }
+
+  // One contact material per ball kind, created on first use.
+  ballMaterial(heavy) {
+    const key = heavy ? 'heavyMat' : 'bouncyMat';
+    if (!this[key]) {
+      this[key] = new CANNON.Material(heavy ? 'heavy' : 'bouncy');
+      this.world.addContactMaterial(new CANNON.ContactMaterial(this.groundMat, this[key], { friction: heavy ? 0.1 : 0.4, restitution: heavy ? 0.1 : 0.8 }));
+    }
+    return this[key];
+  }
+
+  defer(fn) { this.deferred.push(fn); }
 
   // Apply an outward impulse to bodies in a radius.
   blast(center, radius, strength) {

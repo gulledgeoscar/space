@@ -75,7 +75,11 @@ export class Menus {
   closePanel() {
     if (this.panel) this.panel.remove();
     this.panel = null;
-    if (this.cursor) { this.game.inventory.add(this.cursor); this.cursor = null; }
+    if (this.cursor) {
+      const left = this.game.inventory.add(this.cursor);
+      if (left) this.game.entities.dropItem(this.game.player.eyePos, { ...this.cursor, count: left });
+      this.cursor = null;
+    }
   }
 
   close(relock = true) {

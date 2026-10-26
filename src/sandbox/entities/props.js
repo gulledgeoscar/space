@@ -80,7 +80,7 @@ export class Barrel extends Prop {
     this.mesh.add(m);
     const body = this.makeBody(new CANNON.Cylinder(0.4, 0.4, 1.1, 10), 20);
     body.addEventListener('collide', (e) => {
-      if (Math.abs(e.contact.getImpactVelocityAlongNormal()) > 14) this.damage(10, 'impact');
+      if (Math.abs(e.contact.getImpactVelocityAlongNormal()) > 14) game.physics.defer(() => this.damage(10, 'impact'));
     });
   }
   onHurt(amount, cause) {
@@ -108,9 +108,7 @@ export class Ball extends Prop {
     this.trackMaterial(mat);
     this.mesh.add(new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), mat));
     const body = this.makeBody(new CANNON.Sphere(r), heavy ? 60 : 0.8, { linearDamping: heavy ? 0.02 : 0.15, angularDamping: 0.2 });
-    const m = new CANNON.Material(heavy ? 'heavy' : 'bouncy');
-    body.material = m;
-    game.physics.world.addContactMaterial(new CANNON.ContactMaterial(game.physics.groundMat, m, { friction: heavy ? 0.1 : 0.4, restitution: heavy ? 0.1 : 0.8 }));
+    body.material = game.physics.ballMaterial(heavy);
     this.height = r * 2;
   }
   invulnerable = true;
@@ -125,7 +123,7 @@ export class Melon extends Prop {
     this.mesh.add(m);
     const body = this.makeBody(new CANNON.Sphere(0.45), 6, { angularDamping: 0.4 });
     body.addEventListener('collide', (e) => {
-      if (Math.abs(e.contact.getImpactVelocityAlongNormal()) > 9) this.damage(10, 'impact');
+      if (Math.abs(e.contact.getImpactVelocityAlongNormal()) > 9) game.physics.defer(() => this.damage(10, 'impact'));
     });
   }
   onDeath() {
@@ -296,6 +294,7 @@ export class Ragdoll extends Entity {
   }
   setScale() { /* jointed bodies keep their size */ }
   dispose() {
+    this.mesh.parent?.remove(this.mesh);
     for (const c of this.constraints ?? []) this.game.physics.world.removeConstraint(c);
     for (const p of this.parts) { this.game.physics.remove(p.body); this.game.scene.remove(p.holder); }
   }
