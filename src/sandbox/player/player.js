@@ -47,6 +47,15 @@ export class Player {
     this.grapple = null;
     this.speedBoost = 0;
     this.lastDamageCause = '';
+    this.size = 1;
+  }
+
+  // Shrink to ant size or grow into a giant.
+  setSize(s) {
+    this.size = s;
+    this.box.hw = 0.3 * s;
+    this.box.h = STAND_H * s;
+    this.eye = STAND_EYE * s;
   }
 
   get position() { return new THREE.Vector3(this.box.x, this.box.y, this.box.z); }
@@ -149,19 +158,20 @@ export class Player {
     this.crouching = !this.flying && input.key('ShiftLeft');
 
     // Crouch height (only stand up when there is room).
-    const wantH = this.crouching ? CROUCH_H : STAND_H;
+    const sz = this.size;
+    const wantH = (this.crouching ? CROUCH_H : STAND_H) * sz;
     if (wantH !== this.box.h) {
       const test = { ...this.box, h: wantH };
       if (wantH < this.box.h || !boxBlocked(g.world, test)) this.box.h = wantH;
     }
-    const eyeTarget = this.box.h === CROUCH_H ? CROUCH_EYE : STAND_EYE;
+    const eyeTarget = (this.box.h < STAND_H * sz - 0.01 ? CROUCH_EYE : STAND_EYE) * sz;
     this.eye += (eyeTarget - this.eye) * Math.min(1, dt * 14);
 
     const sinY = Math.sin(this.yaw), cosY = Math.cos(this.yaw);
     const wishX = -sinY * fwd + cosY * strafe;
     const wishZ = -cosY * fwd - sinY * strafe;
     const wishLen = Math.hypot(wishX, wishZ) || 1;
-    const mult = s.speedMult ?? 1;
+    const mult = (s.speedMult ?? 1) * Math.sqrt(this.size);
     const gravity = g.gravity;
 
     if (this.flying) {
@@ -204,7 +214,7 @@ export class Player {
 
       // Jump.
       if (input.key('Space') && this.onGround && !this.inWater) {
-        this.vel.y = 8.6 * Math.sqrt(gravity / 28) * (s.jumpMult ?? 1);
+        this.vel.y = 8.6 * Math.sqrt(gravity / 28) * (s.jumpMult ?? 1) * Math.sqrt(Math.max(1, this.size));
         if (this.sprinting) { this.vel.x += -sinY * 1.6; this.vel.z += -cosY * 1.6; }
         this.exhaustion += this.sprinting ? 0.2 : 0.05;
       }
@@ -241,7 +251,7 @@ export class Player {
       const preVy = this.vel.y;
       // Sneaking keeps you from walking off edges.
       const sx = this.box.x, sz = this.box.z;
-      const res = moveBody(g.world, { box: this.box, vel: this.vel, stepHeight: this.onGround ? 0.55 : 0, onGround: this.onGround }, dt, extra);
+      const res = moveBody(g.world, { box: this.box, vel: this.vel, stepHeight: this.onGround ? 0.55 * Math.max(1, this.size) : 0, onGround: this.onGround }, dt, extra);
       if (this.crouching && wasGround && !this.flying) {
         const probe = { ...this.box, y: this.box.y - 0.6, h: 0.55 };
         if (!boxBlocked(g.world, probe) && !extra?.some((e) => e.max.y > probe.y)) {
@@ -261,7 +271,8 @@ export class Player {
         if (lb?.hot && !this.crouching) this.damage(1, 'magma');
         if (this.fallStart !== null) {
           const fell = this.fallStart - this.box.y;
-          if (fell > 3.5 && !lb?.bounce && !this.inWater && landed !== B.hay) this.damage(Math.floor(fell - 3), 'fall');
+          const scaled = fell / Math.max(1, this.size);
+          if (scaled > 3.5 && !lb?.bounce && !this.inWater && landed !== B.hay) this.damage(Math.floor(scaled - 3), 'fall');
           if (fell > 1.2) g.audio?.play('land', { material: lb?.sound });
         }
         this.fallStart = null;
@@ -341,6 +352,15 @@ export class Player {
     this.fallStart = null;
     this.bobAmount = 0;
     v.drive?.(input, dt, this);
+    // Chase camera: swing behind ground vehicles once the mouse rests.
+    const idle = performance.now() - (this.game.input.lastMouseMove ?? 0) > 900;
+    if (v.chaseYaw && idle) {
+      let d = v.chaseYaw() - this.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.yaw += d * Math.min(1, dt * 2.5);
+      this.pitch += (-0.25 - this.pitch) * Math.min(1, dt * 1.5);
+    }
   }
 
   // Camera placement each frame.

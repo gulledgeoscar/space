@@ -51,6 +51,7 @@ export const SPAWNS = {
   // vehicles
   car: { name: 'Car', category: 'Vehicles', color: '#d03030' },
   truck: { name: 'Monster Truck', category: 'Vehicles', color: '#3060d0' },
+  tank: { name: 'Tank', category: 'Vehicles', color: '#4a5a32' },
   boat: { name: 'Boat', category: 'Vehicles', color: '#9a6a3a' },
   plane: { name: 'Plane', category: 'Vehicles', color: '#e0e0e0' },
   helicopter: { name: 'Helicopter', category: 'Vehicles', color: '#40a040' },

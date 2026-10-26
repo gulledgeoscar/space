@@ -13,7 +13,7 @@ const softVertex = /* glsl */`
   void main() {
     vColor = color;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = size * 600.0 / max(0.1, -mv.z);
+    gl_PointSize = min(size * 600.0 / max(0.1, -mv.z), 90.0);
     gl_Position = projectionMatrix * mv;
   }
 `;

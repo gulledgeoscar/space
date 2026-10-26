@@ -102,7 +102,8 @@ export function runCommand(g, text) {
       const item = findItem(args.slice(0, args.length > 1 && Number.isFinite(+args[args.length - 1]) ? -1 : undefined).join('_'));
       if (!item) { err(`Unknown item: ${args[0]}`); break; }
       if (Number.isFinite(+args[args.length - 1]) && args.length > 1) item.count = Math.max(1, Math.min(640, +args[args.length - 1]));
-      const left = g.inventory.add(item);
+      // Creative: hand it straight to you in the selected slot.
+      const left = g.creative ? (g.inventory.setSlot(g.inventory.index, item), 0) : g.inventory.add(item);
       say(left ? 'Inventory full' : `Gave ${item.count} × ${item.kind === 'block' ? BLOCKS[item.id].name : item.kind === 'tool' ? TOOLS[item.key].name : SPAWNS[item.key].name}`);
       break;
     }

@@ -22,6 +22,7 @@ export class PlayerAvatar extends Entity {
     this.pos.set(p.box.x, p.box.y, p.box.z);
     if (p.vehicle) this.pos.y -= 0.55;
     this.mesh.position.copy(this.pos);
+    this.mesh.scale.setScalar(p.size);
     this.mesh.rotation.y = p.yaw + Math.PI;
     const crouch = p.box.h < 1.7;
     this.model.root.position.y = crouch ? -0.2 : 0;

@@ -16,6 +16,7 @@ export class Input {
     this.typing = false;
     this.lastTap = new Map();
     this.doubleTapped = new Set();
+    this.lastMouseMove = 0;
 
     window.addEventListener('keydown', (e) => {
       if (this.typing || (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
@@ -34,7 +35,7 @@ export class Input {
     });
     window.addEventListener('blur', () => { this.down.clear(); this.buttons = 0; });
     window.addEventListener('mousemove', (e) => {
-      if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
+      if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; this.lastMouseMove = performance.now(); }
     });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.locked) return;

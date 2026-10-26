@@ -143,9 +143,9 @@ export class Tools {
         m.rotation.set(0, -0.4, 0);
         m.scale.setScalar(0.34);
       } else {
-        m.position.set(0.44, -0.3, -0.75);
-        m.rotation.set(0, -1.25, 0.25);
-        m.scale.setScalar(0.6);
+        m.position.set(0.42, -0.3, -0.78);
+        m.rotation.set(0, -1.35, 0.2);
+        m.scale.setScalar(0.42);
       }
     } else {
       const c = new THREE.Color(SPAWNS[s.key]?.color ?? '#ffffff');
@@ -438,7 +438,7 @@ export class Tools {
         break;
       case 'flamethrower':
         if (L) {
-          const from = eye.clone().addScaledVector(dir, 0.7).add(new THREE.Vector3(0, -0.15, 0));
+          const from = eye.clone().add(new THREE.Vector3(0.3, -0.25, 0).applyEuler(new THREE.Euler(p.pitch, p.yaw, 0, 'YXZ'))).addScaledVector(dir, 1.4);
           g.particles.flame(from, dir);
           const loop = g.audio.noiseLoop('flame', { type: 'lowpass', f: 700, q: 0.4, gain: 0.35, brown: false });
           loop?.set(1);
@@ -450,7 +450,7 @@ export class Tools {
               if (e.kind === 'mob') e.burning = 5;
               if (e.type === 'barrel') e.burning = true;
             }
-            const h = g.world.raycast(eye, dir, 8);
+            const h = g.world.raycast(eye, dir, 12);
             if (h && g.fireSpread && Math.random() < 0.6) {
               const fx = h.x + h.nx, fy = h.y + h.ny, fz = h.z + h.nz;
               if (g.world.getBlock(fx, fy, fz) === 0) g.world.setBlock(fx, fy, fz, B.fire);

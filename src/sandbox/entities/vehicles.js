@@ -158,6 +158,11 @@ export class Car extends VehicleMixin(RigidEntity) {
     return new THREE.Vector3(this.body.position.x + tmpV.x, this.body.position.y + tmpV.y, this.body.position.z + tmpV.z);
   }
 
+  chaseYaw() {
+    tmpV.set(0, 0, 1).applyQuaternion(tmpQ.set(this.body.quaternion.x, this.body.quaternion.y, this.body.quaternion.z, this.body.quaternion.w));
+    return Math.atan2(-tmpV.x, -tmpV.z);
+  }
+
   forwardSpeed() {
     const v = this.body.velocity;
     tmpV.set(0, 0, 1).applyQuaternion(tmpQ.set(this.body.quaternion.x, this.body.quaternion.y, this.body.quaternion.z, this.body.quaternion.w));
@@ -262,6 +267,7 @@ export class Boat extends ArcadeVehicle {
     this.height = 0.8;
   }
   seatPosition() { return new THREE.Vector3(this.pos.x, this.pos.y + 0.1, this.pos.z); }
+  chaseYaw() { return this.yaw + Math.PI; }
   drive(input, dt, player) {
     const fwd = input.axis('KeyS', 'KeyW');
     const turn = input.axis('KeyD', 'KeyA');
@@ -324,10 +330,12 @@ export class Tank extends ArcadeVehicle {
     this.height = 2;
   }
   seatPosition() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.5, this.pos.z); }
+  chaseYaw() { return this.yaw + Math.PI; }
   drive(input, dt, player) {
     const fwd = input.axis('KeyS', 'KeyW');
     const turn = input.axis('KeyD', 'KeyA');
-    this.speed += fwd * 10 * dt;
+    this.speed += fwd * 18 * dt;
+    this.throttle = fwd;
     this.yaw += turn * dt * 1.2;
     // Turret follows the camera.
     this.turret.rotation.y = player.yaw + Math.PI - this.yaw;
@@ -348,8 +356,9 @@ export class Tank extends ArcadeVehicle {
   }
   update(dt) {
     super.update(dt);
-    this.speed = Math.max(-5, Math.min(9, this.speed));
-    this.speed *= 1 - Math.min(1, dt * 2);
+    this.speed = Math.max(-5, Math.min(10, this.speed));
+    if (!this.rider || !this.throttle) this.speed *= 1 - Math.min(1, dt * 2.5);
+    this.throttle = 0;
     this.vel.x = Math.sin(this.yaw) * this.speed;
     this.vel.z = Math.cos(this.yaw) * this.speed;
     this.physics(dt);
