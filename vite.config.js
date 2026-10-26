@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 // Relative base so the build works from any GitHub Pages sub-path
@@ -10,6 +11,11 @@ export default defineConfig({
     assetsDir: 'assets',
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
+      // Two games: MERIDIAN at the root and the LIMITLESS sandbox at /sandbox/.
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        sandbox: resolve(import.meta.dirname, 'sandbox/index.html'),
+      },
       output: {
         manualChunks: { three: ['three'] },
       },
