@@ -60,6 +60,8 @@ export class Hud {
       s.innerHTML = `<img alt=""><span class="count"></span><span class="num">${i + 1}</span>`;
       this.hotbarEl.appendChild(s);
       this.slots.push(s);
+      // Tappable on touch screens (the HUD ignores the mouse otherwise).
+      s.addEventListener('touchstart', (e) => { e.preventDefault(); this.game.inventory.select(i); }, { passive: false });
     }
     this.refresh();
   }

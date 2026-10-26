@@ -40,7 +40,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--text); 
 label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* ---------- overlays & cards ---------- */
-.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 8, 14, 0.55); backdrop-filter: blur(3px); padding: 16px; overflow-y: auto; }
+.overlay { z-index: 5; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 8, 14, 0.55); backdrop-filter: blur(3px); padding: 16px; overflow-y: auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px 26px; max-width: 520px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); max-height: calc(100vh - 32px); overflow-y: auto; }
 .card.wide { max-width: 860px; }
 .card h1, .card h2 { font-family: var(--font-pixel); margin: 0 0 12px; letter-spacing: 1px; }
@@ -186,3 +186,29 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .bossbar { display: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(480px, 70vw); text-align: center; font: 13px var(--font-pixel); text-shadow: 2px 2px 0 #000; color: #ffb0ff; }
 .bossbar > div { height: 8px; margin-top: 4px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4); }
 .bossbar > div > div { height: 100%; background: linear-gradient(#e060e0, #8a208a); }
+
+/* ---------- touch controls ---------- */
+body.touch .hud .slot { pointer-events: auto; }
+.touch-ui { position: absolute; inset: 0; pointer-events: none !important; user-select: none; -webkit-user-select: none; touch-action: none; }
+.touch-ui > * { pointer-events: auto; }
+.look-pad { position: absolute; left: 40%; right: 0; top: 0; bottom: 0; }
+.stick-zone { position: absolute; left: 0; bottom: 0; width: 40%; height: 60%; }
+.stick-base { position: absolute; left: 90px; top: 60%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.3); opacity: .5; }
+.stick-base.on { opacity: 1; }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(255,255,255,0.45); }
+.tbtns { position: absolute; display: flex; gap: 8px; }
+.tbtns button { width: 54px; height: 54px; padding: 0; border-radius: 50%; font-size: 22px; background: rgba(20,24,34,0.55); border: 2px solid rgba(255,255,255,0.3); touch-action: none; }
+.tbtns button.big { width: 68px; height: 68px; font-size: 28px; }
+.tbtns button.on { background: rgba(111,211,106,0.6); }
+.tbtns.right { right: 14px; bottom: 90px; flex-direction: column-reverse; align-items: flex-end; }
+.tbtns.top { right: 10px; top: 60px; flex-direction: row; }
+.tbtns.top button { width: 44px; height: 44px; font-size: 18px; }
+body.touch .topright { top: 8px; }
+body.touch .msgs { bottom: 160px; }
+@media (max-height: 500px) {
+  .card { padding: 14px 18px; }
+  .card h1 { font-size: 26px; margin-bottom: 4px; }
+  .controls { gap: 2px 14px; font-size: 13px; }
+  .bottom { bottom: 4px; }
+}
+body.touch .topright { right: auto; left: 12px; text-align: left; }

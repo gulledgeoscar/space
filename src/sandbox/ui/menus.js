@@ -88,10 +88,14 @@ export class Menus {
   // ---- start / pause / death ----
 
   showStartHint() {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const help = touch
+      ? '<p class="sub">Left thumb: move · right side: drag to look, tap to place or use, hold to break.<br>⤒ jump · ⛏ attack/fire · ✋ use · ⤓ sneak · 🎒 inventory · 🕊 fly · 🚗 ride</p>'
+      : `<div class="controls">${CONTROLS.slice(0, 16).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('')}</div>`;
     const el = h(`<div class="overlay start"><div class="card">
       <h1>LIMITLESS</h1><p class="sub">Do anything.</p>
-      <div class="controls">${CONTROLS.slice(0, 16).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('')}</div>
-      <button class="primary big">Click to play</button>
+      ${help}
+      <button class="primary big">${touch ? 'Tap' : 'Click'} to play</button>
     </div></div>`);
     el.querySelector('button').onclick = () => { this.game.audio.init(); this.close(true); };
     el.onclick = (e) => { if (e.target === el) { this.game.audio.init(); this.close(true); } };

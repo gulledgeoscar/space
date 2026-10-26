@@ -16,6 +16,10 @@ export const DEFAULT_SETTINGS = {
   jumpMult: 1,
 };
 
+// Phones and tablets get a lighter default.
+const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+if (coarse) Object.assign(DEFAULT_SETTINGS, { renderDistance: 5, pixelRatio: 1 });
+
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');

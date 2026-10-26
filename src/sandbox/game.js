@@ -19,6 +19,7 @@ import { explode } from './fx/explosion.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { runCommand } from './ui/commands.js';
+import { TouchControls } from './ui/touch.js';
 
 export class Game {
   constructor({ canvas, ui, atlas, audio, settings, storage, meta }) {
@@ -82,6 +83,7 @@ export class Game {
     this.tools = new Tools(this);
     this.hud = new Hud(this);
     this.menus = new Menus(this);
+    this.touch = new TouchControls(this);
 
     this.world.onChange((x, y, z, id, old) => {
       this.ticks.onBlockChange(x, y, z, id, old);
@@ -228,6 +230,7 @@ export class Game {
     this.hud.dispose();
     this.menus.dispose();
     this.tools.dispose();
+    this.touch.dispose();
     this.renderer.dispose();
   }
 
@@ -328,6 +331,15 @@ export class Game {
       return;
     }
 
+    // Gamepad: Start pauses; A / B confirm or back out of menus.
+    const pad = this.input.pollGamepad(dt);
+    if (pad) {
+      if (pad.pause && !this.menus.open) this.menus.showPause();
+      else if (this.menus.open && pad.menuConfirm) this.menus.panel?.querySelector('button.primary')?.click();
+      else if (this.menus.open && pad.menuBack && this.menus.open !== 'death') { if (this.menus.open === 'pause') this.menus.close(true); else this.menus.close(true); }
+    }
+    if (this.input.virtual && !this.menus.open && !this.paused) this.input.locked = true;
+    this.touch.setVisible(!this.menus.open && !this.hudHidden);
     const active = !this.paused && !this.menus.open;
     if (active && this.input.locked) this.handleGlobalKeys();
     this.zoom = (this.zoomToggle || (this.holding('sniper') && this.input.mouse(2))) && active;
