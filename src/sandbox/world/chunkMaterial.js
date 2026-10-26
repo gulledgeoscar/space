@@ -50,6 +50,9 @@ const fragment = /* glsl */`
   uniform float minLight;
   uniform float time;
   uniform vec3 flash;
+  uniform float waterLayer;
+  uniform vec3 sunDir;
+  uniform vec3 skyColor;
   varying vec3 vUv;
   varying vec4 vLit;
   varying float vDist;
@@ -66,8 +69,20 @@ const fragment = /* glsl */`
     bool isLava = abs(vUv.z - lavaLayer) < 0.5;
     if (isLava) light = vec3(1.0);
     vec3 col = tex.rgb * light * vLit.b * vLit.a;
+    float alpha = tex.a * opacity;
+    // Water surfaces reflect the sky and glint in the sun.
+    if (abs(vUv.z - waterLayer) < 0.5 && vLit.a > 0.99 && cameraPosition.y > vWorld.y) {
+      vec3 v = normalize(cameraPosition - vWorld);
+      vec3 n = normalize(vec3(sin(vWorld.x * 1.3 + time * 1.4) * 0.05, 1.0, cos(vWorld.z * 1.1 + time * 1.2) * 0.05));
+      float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+      float skyLit = max(daylight, 0.1);
+      col = mix(col, skyColor * skyLit, fres * 0.65);
+      float spec = pow(max(dot(reflect(-v, n), sunDir), 0.0), 120.0) * smoothstep(0.0, 0.2, sunDir.y);
+      col += vec3(1.0, 0.95, 0.8) * spec * 1.5 * curve(vLit.r);
+      alpha = mix(alpha, 0.95, fres);
+    }
     float fog = smoothstep(fogNear, fogFar, vDist);
-    gl_FragColor = vec4(mix(col, fogColor, fog), tex.a * opacity);
+    gl_FragColor = vec4(mix(col, fogColor, fog), alpha);
     #include <colorspace_fragment>
   }
 `;
@@ -87,6 +102,8 @@ export function createChunkMaterials(texture, waterLayer, lavaLayer) {
     waveAmp: { value: 0.04 },
     minLight: { value: 0.02 },
     flash: { value: new THREE.Color(0, 0, 0) },
+    sunDir: { value: new THREE.Vector3(0, 1, 0) },
+    skyColor: { value: new THREE.Color(0.6, 0.75, 1) },
   };
   const make = (opts) => new THREE.ShaderMaterial({
     vertexShader: vertex,

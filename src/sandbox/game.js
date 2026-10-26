@@ -432,6 +432,8 @@ export class Game {
     const flash = this.weather.flash;
     u.daylight.value = Math.min(1, this.sky.daylight + flash * 0.8);
     u.flash.value.setRGB(flash * 0.3, flash * 0.3, flash * 0.35);
+    u.sunDir.value.copy(this.sky.sunDir);
+    u.skyColor.value.copy(this.sky.uniforms.zenith.value).lerp(this.sky.fogColor, 0.5);
     const camBlock = this.world.getBlock(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     const far = this.world.renderDistance * CHUNK;
     if (LIQUID[camBlock] === 1) {
