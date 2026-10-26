@@ -19,6 +19,8 @@ export const TOOLS = {
   terraform: { name: 'Terraformer', category: 'Building', desc: 'Left-click: dig a sphere. Right-click: raise ground. Scroll+Alt: size.' },
   shape: { name: 'Builder Wand', category: 'Building', desc: 'Right-click to build a shape from the block in the next slot. Left-click cycles shape; Alt+scroll sizes.' },
   paint: { name: 'Paint Brush', category: 'Building', desc: 'Right-click paints blocks with the block in the next slot. Alt+scroll sizes.' },
+  portal: { name: 'Portal Gun', category: 'Tools', desc: 'Left-click: blue portal. Right-click: orange portal. Walk through one, come out the other.' },
+  sign: { name: 'Sign', category: 'Building', desc: 'Right-click a block to put up a sign with your own text.' },
   copy: { name: 'Copy Tool', category: 'Building', desc: 'Left-click: set corner 1, right-click: corner 2, C: copy, V: paste where you look.' },
   remover: { name: 'Remover', category: 'Tools', desc: 'Deletes the creature, prop or vehicle you aim at. Right-click: delete all nearby.' },
   teleport: { name: 'Teleport Gun', category: 'Tools', desc: 'Teleports you to where you aim.' },
@@ -77,6 +79,9 @@ export const SPAWNS = {
   domino: { name: 'Domino Row', category: 'Props', color: '#f0f0f0' },
   primed_tnt: { name: 'Lit TNT', category: 'Explosives', color: '#d03030' },
   nuke: { name: 'Nuke', category: 'Explosives', color: '#e0e020' },
+  tornado: { name: 'Tornado', category: 'Disasters', color: '#8a8a90' },
+  meteors: { name: 'Meteor Shower', category: 'Disasters', color: '#ff6010' },
+  earthquake: { name: 'Earthquake', category: 'Disasters', color: '#8a6040' },
   // structures
   house: { name: 'House', category: 'Structures', color: '#b08a54' },
   tower: { name: 'Tower', category: 'Structures', color: '#7a7a7a' },

@@ -10,6 +10,8 @@ import { CHUNK, chunkKey } from '../world/constants.js';
 import { B, SOLID, LIQUID } from '../world/blocks.js';
 import { PlayerAvatar } from './avatar.js';
 import { Dragon } from './dragon.js';
+import { Sign } from './sign.js';
+import { Tornado, MeteorShower, Earthquake } from './disasters.js';
 
 const MAX_SAVED = 2000;
 const ray = new THREE.Ray();
@@ -57,6 +59,10 @@ export class EntityManager {
         case 'falling_block': e = new FallingBlock(g, opts); break;
         case 'item': e = new DroppedItem(g, opts); break;
         case 'nuke': e = new Nuke(g); break;
+        case 'sign': e = new Sign(g, opts); break;
+        case 'tornado': e = new Tornado(g); break;
+        case 'meteors': e = new MeteorShower(g); break;
+        case 'earthquake': e = new Earthquake(g); break;
         case 'dragon': e = new Dragon(g); p.y = Math.max(p.y + 20, opts.y ?? 0); if (opts.health) e.health = opts.health; break;
         case 'car': e = new Car(g, opts); e.place(p, opts.yaw ?? 0); break;
         case 'truck': e = new Car(g, { ...opts, truck: true }); e.place(p, opts.yaw ?? 0); break;

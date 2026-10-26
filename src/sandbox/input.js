@@ -42,6 +42,8 @@ export class Input {
     });
     on(window, 'blur', () => { this.down.clear(); this.buttons = 0; });
     on(window, 'mousemove', (e) => {
+      // Some browsers report a huge jump on the first move after locking.
+      if (Math.abs(e.movementX) > 350 || Math.abs(e.movementY) > 350) return;
       if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; this.lastMouseMove = performance.now(); }
     });
     on(canvas, 'mousedown', (e) => {

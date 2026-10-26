@@ -332,6 +332,7 @@ export class Menus {
       Materials: cat.tools.filter((s) => s.category === 'Materials'),
       Creatures: cat.spawns.filter((s) => s.category === 'Creatures' || s.category === 'Monsters'),
       'Vehicles & Props': cat.spawns.filter((s) => ['Vehicles', 'Props', 'Explosives'].includes(s.category)),
+      Disasters: cat.spawns.filter((s) => s.category === 'Disasters'),
       Structures: cat.spawns.filter((s) => s.category === 'Structures'),
     };
     const tabsEl = el.querySelector('.tabs');
@@ -452,6 +453,21 @@ export class Menus {
       if (!c.count) this.cursor = null;
     } else { inv.setSlot(i, c); this.cursor = slot; }
     this.game.hud.refresh();
+  }
+
+  // A one-line text box (signs).
+  showPrompt(title, value, done) {
+    const el = h(`<div class="overlay"><div class="card menu"><h2></h2><input type="text" maxlength="80"><button class="primary">Done</button><button>Cancel</button></div></div>`);
+    el.querySelector('h2').textContent = title;
+    const inp = el.querySelector('input');
+    inp.value = value;
+    this.show('prompt', el);
+    this.game.input.typing = true;
+    setTimeout(() => inp.focus(), 0);
+    const finish = (ok) => { const v = inp.value.trim(); this.close(true); if (ok) done(v); };
+    el.querySelector('button.primary').onclick = () => finish(true);
+    el.querySelectorAll('button')[1].onclick = () => finish(false);
+    inp.onkeydown = (e) => { e.stopPropagation(); if (e.code === 'Enter') finish(true); if (e.code === 'Escape') finish(false); };
   }
 
   // ---- console ----

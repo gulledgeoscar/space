@@ -84,6 +84,8 @@ export class Tools {
     this.beam.visible = false;
     game.scene.add(this.beam);
     this.tracers = [];
+    this.portals = { blue: null, orange: null };
+    this.portalCooldown = 0;
 
     // First-person view model.
     this.vmScene = new THREE.Scene();
@@ -132,7 +134,7 @@ export class Tools {
       m.rotation.set(0.15, 0.75, 0);
     } else if (s.kind === 'tool') {
       m = artMesh(s.key);
-      const gun = GUNS[s.key] || ['rocket', 'flamethrower', 'laser', 'gravity', 'teleport', 'resize', 'freeze', 'grapple'].includes(s.key);
+      const gun = GUNS[s.key] || ['rocket', 'flamethrower', 'laser', 'gravity', 'teleport', 'resize', 'freeze', 'grapple', 'portal'].includes(s.key);
       if (gun) {
         // The art's barrel points right (+x); turn it to point forward.
         m.rotation.set(0, Math.PI / 2 + 0.06, 0);
@@ -170,6 +172,7 @@ export class Tools {
     this.tracers = this.tracers.filter((t) => t.life > 0);
     this.beam.visible = false;
     this.preview.visible = false;
+    this.updatePortals(dt);
 
     if (p.dead || p.vehicle) {
       this.highlight.visible = false; this.crack.visible = false;
@@ -183,7 +186,7 @@ export class Tools {
     const reach = g.creative ? 7 : 5;
     const sel = g.inventory.selected;
     const key = sel?.kind === 'tool' ? sel.key : null;
-    const longRange = ['teleport', 'lightning', 'terraform', 'shape', 'paint', 'remover', 'resize', 'freeze', 'copy', 'fireworks'].includes(key) || sel?.kind === 'spawn';
+    const longRange = ['teleport', 'portal', 'lightning', 'terraform', 'shape', 'paint', 'remover', 'resize', 'freeze', 'copy', 'fireworks'].includes(key) || sel?.kind === 'spawn';
     const range = longRange ? 120 : reach;
     this.target = g.world.raycast(eye, dir, range, (id) => !LIQUID[id] || (sel?.kind === 'spawn' && SPAWNS[sel.key]?.category === 'Vehicles' && sel.key === 'boat'));
     const ent = g.entities.raycast(eye, dir, longRange ? 120 : reach + 1, (e) => e.pickable && e !== this.held?.entity);
@@ -644,6 +647,24 @@ export class Tools {
           g.audio.play('teleport');
         }
         break;
+      case 'portal':
+        if ((Lc || Rc) && t) this.placePortal(Lc ? 'blue' : 'orange', t);
+        else if (Lc || Rc) g.audio.play('click');
+        break;
+      case 'sign':
+        if (Rc && t && t.dist < 8) {
+          const wall = t.ny === 0;
+          const at = wall
+            ? { x: t.x + 0.5 + t.nx * 0.53, y: t.y, z: t.z + 0.5 + t.nz * 0.53 }
+            : { x: t.x + 0.5, y: t.y + (t.ny > 0 ? 1 : -1), z: t.z + 0.5 };
+          const yaw = wall ? Math.atan2(t.nx, t.nz) : p.yaw;
+          g.menus.showPrompt('Write on the sign', '', (text) => {
+            if (text) g.entities.spawn('sign', at, { text, yaw, wall });
+            g.inventory.consumeSelected();
+          });
+        }
+        if (Lc) this.melee('hand');
+        break;
       case 'grapple':
         if (Lc && this.cooldown <= 0) {
           this.cooldown = 0.4;
@@ -747,6 +768,83 @@ export class Tools {
       g.particles.poof(pos, 0xffffff, 10);
       g.audio.play('pop');
       g.inventory.consumeSelected();
+    }
+  }
+
+  // ---- portals ----
+
+  placePortal(color, t) {
+    const g = this.game;
+    const n = new THREE.Vector3(t.nx, t.ny, t.nz);
+    const pos = new THREE.Vector3(t.x + 0.5, t.y + 0.5, t.z + 0.5).addScaledVector(n, 0.52);
+    let p = this.portals[color];
+    if (!p) {
+      const c = color === 'blue' ? 0x40a0ff : 0xff8020;
+      const mesh = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 32), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+      const inner = new THREE.Mesh(new THREE.CircleGeometry(0.42, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+      const swirl = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.38, 6, 1, 0, Math.PI * 1.2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+      mesh.add(ring, inner, swirl);
+      mesh.scale.set(1.1, 2.0, 1);
+      g.scene.add(mesh);
+      p = this.portals[color] = { mesh, swirl, pos, n, color: c };
+    }
+    p.pos.copy(pos);
+    p.n.copy(n);
+    p.mesh.position.copy(pos);
+    // Face out of the wall, tall side up (floors and ceilings follow your view).
+    const up = Math.abs(n.y) > 0.5 ? new THREE.Vector3(-Math.sin(g.player.yaw), 0, -Math.cos(g.player.yaw)) : new THREE.Vector3(0, 1, 0);
+    const m = new THREE.Matrix4().lookAt(new THREE.Vector3(), n.clone().negate(), up);
+    p.mesh.quaternion.setFromRotationMatrix(m);
+    if (Math.abs(n.y) < 0.5) p.mesh.position.y = Math.max(pos.y, t.y + 1);
+    p.pos.copy(p.mesh.position);
+    g.particles.sparkle(p.pos, p.color, 20);
+    g.audio.play('teleport', { pos: p.pos });
+    this.swing();
+  }
+
+  updatePortals(dt) {
+    const { blue, orange } = this.portals;
+    for (const p of [blue, orange]) if (p) p.swirl.rotation.z += dt * 4;
+    this.portalCooldown -= dt;
+    if (!blue || !orange || this.portalCooldown > 0) return;
+    const g = this.game;
+    const tryPass = (center, vel, move) => {
+      for (const [a, b] of [[blue, orange], [orange, blue]]) {
+        const rel = center.clone().sub(a.pos);
+        const along = rel.dot(a.n);
+        const across = rel.clone().addScaledVector(a.n, -along);
+        const wall = Math.abs(a.n.y) < 0.5;
+        const ok = wall ? Math.hypot(across.x, across.z) < 0.6 && Math.abs(across.y) < 1.2 : across.length() < 0.7;
+        if (ok && along > -0.3 && along < 0.9 && vel.dot(a.n) <= 0.5) {
+          const speed = Math.max(4, vel.length());
+          const out = b.pos.clone().addScaledVector(b.n, Math.abs(b.n.y) > 0.5 ? 1.0 : 0.7);
+          move(out, b.n.clone().multiplyScalar(speed), b);
+          g.audio.play('teleport', { pos: out });
+          g.particles.sparkle(out, b.color, 16);
+          this.portalCooldown = 0.4;
+          return true;
+        }
+      }
+      return false;
+    };
+    const p = g.player;
+    if (!p.vehicle) {
+      const c = p.position.add(new THREE.Vector3(0, p.box.h / 2, 0));
+      if (tryPass(c, p.vel, (out, v, b) => {
+        p.teleport(out.x, out.y - p.box.h / 2, out.z);
+        p.vel.copy(v);
+        if (Math.abs(b.n.y) < 0.5) p.yaw = Math.atan2(-b.n.x, -b.n.z);
+      })) return;
+    }
+    for (const e of g.entities.list) {
+      if (e.removed || e.kind === 'disaster' || e === p.vehicle) continue;
+      const c = e.center;
+      const vel = e.body ? new THREE.Vector3(e.body.velocity.x, e.body.velocity.y, e.body.velocity.z) : e.vel;
+      if (tryPass(c, vel, (out, v) => {
+        if (e.body) { e.body.position.set(out.x, out.y, out.z); e.body.velocity.set(v.x, v.y, v.z); e.body.wakeUp(); }
+        else { e.pos.set(out.x, out.y - (e.height ?? 1) * (e.scale ?? 1) / 2, out.z); e.vel.copy(v); }
+      })) return;
     }
   }
 
@@ -959,6 +1057,7 @@ export class Tools {
   dispose() {
     const g = this.game;
     g.scene.remove(this.highlight, this.crack, this.selection, this.preview, this.beam);
+    for (const p of Object.values(this.portals)) if (p) g.scene.remove(p.mesh);
     for (const t of this.tracers) g.scene.remove(t.line);
   }
 }

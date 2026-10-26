@@ -13,6 +13,7 @@ const SPECS = {
   firework: { gravity: -6, radius: 0.1, life: 1.6, firework: true },
   hook: { gravity: 6, radius: 0.1, life: 1.2, hook: true },
   fireball: { gravity: 0, radius: 0.3, life: 5, explode: 1.6, fire: true },
+  meteor: { gravity: 4, radius: 0.6, life: 8, explode: 4.2, fire: true },
 };
 
 const geoms = {};
@@ -35,6 +36,11 @@ function meshFor(type) {
     }
     case 'firework': g.add(new THREE.Mesh(geoms.fw ??= new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), new THREE.MeshLambertMaterial({ color: 0xd03030 }))); break;
     case 'hook': g.add(new THREE.Mesh(geoms.hook ??= new THREE.BoxGeometry(0.15, 0.15, 0.3), new THREE.MeshLambertMaterial({ color: 0x999999 }))); break;
+    case 'meteor': {
+      g.add(new THREE.Mesh(geoms.met ??= new THREE.DodecahedronGeometry(0.7, 0), new THREE.MeshBasicMaterial({ color: 0x3a2010 })));
+      g.add(new THREE.Mesh(geoms.metGlow ??= new THREE.DodecahedronGeometry(0.85, 0), new THREE.MeshBasicMaterial({ color: 0xff6010, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })));
+      break;
+    }
     case 'fireball': g.add(new THREE.Mesh(geoms.fb ??= new THREE.SphereGeometry(0.3, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff8020 }))); break;
     default: break;
   }
@@ -103,6 +109,7 @@ export class Projectile extends Entity {
     }
     if (this.type === 'rocket' || this.type === 'shell' || this.type === 'firework') g.particles.trail(this.pos);
     if (this.type === 'fireball') g.particles.fire(this.pos.x, this.pos.y, this.pos.z, 1.2);
+    if (this.type === 'meteor') { g.particles.fire(this.pos.x, this.pos.y, this.pos.z, 2.5); g.particles.trail(this.pos); g.particles.smoke(this.pos.x, this.pos.y, this.pos.z, 0.8, 3); }
     if (this.type === 'grenade' && Math.random() < 0.3) g.particles.smoke(this.pos.x, this.pos.y, this.pos.z, 0.08, 0.6);
     this.syncMesh();
   }
