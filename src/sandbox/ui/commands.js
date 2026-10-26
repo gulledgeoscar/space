@@ -149,6 +149,13 @@ export function runCommand(g, text) {
     }
     case 'locate': {
       const want = (args.join(' ') || '').toLowerCase();
+      if (want === 'village') {
+        const vs = g.generator.villages.near(p.box.x - 2000, p.box.z - 2000, p.box.x + 2000, p.box.z + 2000);
+        vs.sort((a, b) => Math.hypot(a.x - p.box.x, a.z - p.box.z) - Math.hypot(b.x - p.box.x, b.z - p.box.z));
+        if (!vs.length) { err('No village within 2000 blocks'); break; }
+        say(`Nearest village: ${vs[0].x}, ${vs[0].y}, ${vs[0].z}. /tp ${vs[0].x + 4} ${vs[0].y + 2} ${vs[0].z}`);
+        break;
+      }
       const idx = BIOME_NAMES.findIndex((b) => b.toLowerCase().includes(want));
       if (!want || idx < 0) { err(`Biomes: ${BIOME_NAMES.join(', ')}`); break; }
       for (let r = 32; r < 6000; r += 32) {

@@ -316,7 +316,13 @@ export class Tools {
     g.audio.play('break', { material: BLOCKS[id].sound, pos: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
     g.stats.blocksBroken++;
     if (byPlayer && !g.creative && BLOCKS[id].hardness !== Infinity && !LIQUID[id] && id !== B.fire) {
-      const drop = id === B.grass || id === B.mycelium ? B.dirt : id === B.stone ? B.cobble : id === B.glass ? 0 : id === B.oak_leaves || id === B.birch_leaves || id === B.spruce_leaves ? (Math.random() < 0.1 ? -1 : 0) : id;
+      const ORE = { [B.coal_ore]: 'coal', [B.iron_ore]: 'iron', [B.gold_ore]: 'gold', [B.diamond_ore]: 'diamond', [B.emerald_ore]: 'emerald' };
+      if (ORE[id]) {
+        g.entities.dropItem({ x: x + 0.5, y: y + 0.3, z: z + 0.5 }, { kind: 'tool', key: ORE[id], count: id === B.coal_ore ? 1 + ((Math.random() * 2) | 0) : 1 });
+        return;
+      }
+      const leaves = BLOCKS[id].render === 'cutout' && BLOCKS[id].shape === 'cube' && BLOCKS[id].key.endsWith('leaves');
+      const drop = id === B.grass || id === B.mycelium ? B.dirt : id === B.stone ? B.cobble : id === B.glass ? 0 : leaves ? (Math.random() < 0.08 ? -1 : 0) : id;
       if (drop > 0) g.entities.dropItem({ x: x + 0.5, y: y + 0.3, z: z + 0.5 }, { kind: 'block', id: drop, count: 1 });
       if (drop === -1) g.entities.dropItem({ x: x + 0.5, y: y + 0.3, z: z + 0.5 }, { kind: 'tool', key: 'apple', count: 1 });
     }

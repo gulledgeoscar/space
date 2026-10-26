@@ -3,6 +3,7 @@
 import { Simplex, hash3, hashSeed } from '../util/noise.js';
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME, index } from './constants.js';
 import { B } from './blocks.js';
+import { Villages } from './villages.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH: 4, TAIGA: 5, TUNDRA: 6, DESERT: 7,
@@ -34,6 +35,7 @@ export class Generator {
     this.cave2 = new Simplex(`${seed}:cave2`);
     this.cavern = new Simplex(`${seed}:cavern`);
     this.special = new Simplex(`${seed}:special`);
+    this.villages = new Villages(this);
   }
 
   // Returns [height, biome] for a world column.
@@ -145,6 +147,7 @@ export class Generator {
     }
 
     this.decorate(data, cx, cz, heights, biomes, W, P);
+    this.villages.stamp(data, cx, cz);
     return data;
   }
 
@@ -205,6 +208,7 @@ export class Generator {
       if (h <= SEA_LEVEL && biome !== BIOME.SWAMP) continue;
       if (h <= SEA_LEVEL - 1) continue;
       const r = hash3(wx, 1, wz, s + 101);
+      if (r < 0.1 && this.villages.inVillage(wx, wz)) continue;
       const density = [0, 0.002, 0.006, 0.045, 0.04, 0.035, 0.008, 0.004, 0.001, 0.09, 0.02, 0.006, 0, 0.035, 0.006, 0][biome];
       if (r >= density) continue;
       const x = lx - P, z = lz - P;

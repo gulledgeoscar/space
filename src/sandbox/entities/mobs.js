@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { VoxelEntity } from './base.js';
 import { buildModel } from './models.js';
 import { B, BLOCKS, SOLID, LIQUID } from '../world/blocks.js';
+import { moveAxis } from '../physics/voxelCollide.js';
 
 export const MOB_TYPES = {
   pig: { hp: 10, speed: 2.2, hw: 0.4, h: 0.9, sound: 'pig', food: ['apple', 'bread'], drops: ['steak'] },
@@ -12,10 +13,11 @@ export const MOB_TYPES = {
   wolf: { hp: 16, speed: 4.2, hw: 0.3, h: 0.85, sound: 'wolf', food: ['steak'], attack: 4, tameable: true },
   horse: { hp: 24, speed: 2.6, hw: 0.6, h: 1.6, sound: 'horse', food: ['apple', 'bread'], rideable: true },
   villager: { hp: 20, speed: 2.4, hw: 0.3, h: 1.95, sound: 'villager' },
-  zombie: { hp: 20, speed: 3.0, hw: 0.3, h: 1.95, sound: 'zombie', hostile: true, attack: 3, burns: true },
-  skeleton: { hp: 20, speed: 3.0, hw: 0.3, h: 1.95, sound: 'skeleton', hostile: true, ranged: true, burns: true },
-  bomber: { hp: 20, speed: 2.8, hw: 0.4, h: 1.6, sound: 'fuse', hostile: true, bomber: true },
-  spider: { hp: 16, speed: 4.6, hw: 0.65, h: 0.9, sound: 'spider', hostile: true, attack: 2, climbs: true },
+  zombie: { hp: 20, speed: 3.0, hw: 0.3, h: 1.95, sound: 'zombie', hostile: true, attack: 3, burns: true, drops: ['iron?'] },
+  skeleton: { hp: 20, speed: 3.0, hw: 0.3, h: 1.95, sound: 'skeleton', hostile: true, ranged: true, burns: true, drops: ['stick'] },
+  bomber: { hp: 20, speed: 2.8, hw: 0.4, h: 1.6, sound: 'fuse', hostile: true, bomber: true, drops: ['gunpowder'] },
+  spider: { hp: 16, speed: 4.6, hw: 0.65, h: 0.9, sound: 'spider', hostile: true, attack: 2, climbs: true, drops: ['string'] },
+  fish: { hp: 3, speed: 2.5, hw: 0.2, h: 0.4, sound: 'splash', aquatic: true, drops: ['steak'] },
   golem: { hp: 100, speed: 2.4, hw: 0.7, h: 2.7, sound: 'hit', guardian: true, attack: 12 },
 };
 
@@ -36,6 +38,7 @@ export class Mob extends VoxelEntity {
     this.health = this.maxHealth = def.hp;
     this.hostile = !!def.hostile;
     this.woolColor = opts.woolColor ?? (type === 'sheep' ? [0xeeeeee, 0xeeeeee, 0xeeeeee, 0x606060, 0x1c1c1c, 0x7a5030][(Math.random() * 6) | 0] : undefined);
+    this.fishColor = opts.fishColor ?? (type === 'fish' ? [0xf08030, 0x40a0f0, 0xf0e040, 0xe04060, 0xc0c0c0][(Math.random() * 5) | 0] : undefined);
     this.coat = opts.coat ?? (type === 'horse' ? [0x8a5a30, 0x5a3a20, 0xd8c8a8, 0x3a2a20, 0xa8a8a8][(Math.random() * 5) | 0] : undefined);
     this.model = buildModel(this, type);
     this.mesh.add(this.model.root);
@@ -119,6 +122,7 @@ export class Mob extends VoxelEntity {
     if (!g.creative) {
       for (const d of this.def.drops ?? []) {
         if (d === 'wool') g.entities.dropItem(this.center, { kind: 'block', id: woolBlockFor(this.woolColor), count: 1 + ((Math.random() * 2) | 0) });
+        else if (d.endsWith('?')) { if (Math.random() < 0.25) g.entities.dropItem(this.center, { kind: 'tool', key: d.slice(0, -1), count: 1 }); }
         else g.entities.dropItem(this.center, { kind: 'tool', key: d, count: 1 + ((Math.random() * 2) | 0) });
       }
     }
@@ -198,6 +202,7 @@ export class Mob extends VoxelEntity {
     if (this.frozen) { this.updateLook(dt); this.mesh.position.copy(this.pos); return; }
     const def = this.def;
     const p = g.player;
+    if (def.aquatic) { this.swim(dt); return; }
     this.attackCooldown -= dt;
     this.think -= dt;
     this.love = Math.max(0, this.love - dt);
@@ -389,6 +394,48 @@ export class Mob extends VoxelEntity {
     if (this.charged) for (const m of this.mats) m.mat.color.lerp(new THREE.Color(0.5, 0.7, 1), 0.25);
   }
 
+  // Fish wander inside water and flop about on land.
+  swim(dt) {
+    const g = this.game;
+    const inWater = LIQUID[g.world.getBlock(this.pos.x, this.pos.y + 0.2, this.pos.z)] === 1;
+    this.think -= dt;
+    if (inWater) {
+      if (this.think <= 0 || !this.moveTarget) {
+        this.think = 1 + Math.random() * 3;
+        this.moveTarget = new THREE.Vector3(this.pos.x + (Math.random() - 0.5) * 8, this.pos.y + (Math.random() - 0.5) * 3, this.pos.z + (Math.random() - 0.5) * 8);
+        if (this.state === 'flee') this.state = 'idle';
+      }
+      const d = tmp.subVectors(this.moveTarget, this.pos);
+      const len = d.length();
+      if (len > 0.3) {
+        d.multiplyScalar(this.def.speed * (this.state === 'flee' ? 2 : 1) / len);
+        this.vel.lerp(d, Math.min(1, dt * 2));
+        this.yaw = Math.atan2(this.vel.x, this.vel.z);
+      }
+      // Stay submerged.
+      if (LIQUID[g.world.getBlock(this.pos.x, this.pos.y + this.vel.y * dt + 0.4, this.pos.z)] !== 1) this.vel.y = Math.min(this.vel.y, 0);
+      this.box.x = this.pos.x; this.box.y = this.pos.y; this.box.z = this.pos.z;
+      for (const axis of [0, 1, 2]) this.moveVoxel(axis, dt);
+      this.pos.set(this.box.x, this.box.y, this.box.z);
+      this.air = 10;
+    } else {
+      this.physics(dt);
+      if (this.onGround && Math.random() < 0.05) { this.vel.y = 4; this.vel.x = (Math.random() - 0.5) * 3; this.vel.z = (Math.random() - 0.5) * 3; }
+      this.air = (this.air ?? 10) - dt;
+      if (this.air < 0) { this.air = 1; this.damage(1, 'drown'); }
+    }
+    this.model.tail.rotation.y = Math.sin(this.age * (inWater ? 10 : 25)) * 0.6;
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.set(inWater ? 0 : Math.PI / 2 * Math.sign(Math.sin(this.age * 7)), this.yaw, 0);
+    this.updateLook(dt);
+  }
+
+  moveVoxel(axis, dt) {
+    const v = axis === 0 ? this.vel.x : axis === 1 ? this.vel.y : this.vel.z;
+    const moved = moveAxis(this.game.world, this.box, axis, v * dt);
+    if (Math.abs(moved - v * dt) > 1e-6) { if (axis === 0) this.vel.x *= -0.5; else if (axis === 1) this.vel.y *= -0.5; else this.vel.z *= -0.5; this.moveTarget = null; }
+  }
+
   animate(dt, speed) {
     const m = this.model;
     this.walkPhase += dt * speed * 3.2 / Math.max(0.5, this.scale);
@@ -419,7 +466,7 @@ export class Mob extends VoxelEntity {
   }
 
   serialize() {
-    return { type: this.type, x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw, health: this.health, scale: this.scale, tamed: this.tamed, woolColor: this.woolColor, coat: this.coat, baby: this.baby, name: this.name, sitting: this.sitting };
+    return { type: this.type, x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw, health: this.health, scale: this.scale, tamed: this.tamed, woolColor: this.woolColor, coat: this.coat, fishColor: this.fishColor, baby: this.baby, name: this.name, sitting: this.sitting };
   }
 }
 

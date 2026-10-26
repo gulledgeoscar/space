@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS = {
   fov: 75,
   sensitivity: 1,
   volume: 0.7,
+  music: 0.5,
   pixelRatio: 1,
   invertY: false,
   viewBob: true,

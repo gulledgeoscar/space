@@ -613,7 +613,27 @@ export const ART = {
   },
 };
 
-// Simple coloured-circle icons for spawnables, keyed by colour scheme.
+
+// Material icons share a few silhouettes, recoloured.
+const GEM = ['................', '................', '....aaaaaaaa....', '...abbccbbbba...', '..abccbbbbbbba..', '.abbbbbbbbbbbba.', '.addddddddddda..', '..addddddddda...', '...adddddddda...', '....addddda.....', '.....addda......', '......ada.......', '.......a........', '................', '................', '................'];
+const INGOT = ['................', '................', '................', '................', '.....aaaaaaaa...', '....acccccccba..', '...accbbbbbbbda.', '..abbbbbbbbbbda.', '.abbbbbbbbbbdda.', '.addddddddddda..', '..aaaaaaaaaaa...', '................', '................', '................', '................', '................'];
+const LUMP = ['................', '................', '................', '.....aaaa.......', '....abbbbaa.....', '...abcbbbbba....', '..abbbbbbbbba...', '..abbbbbbbbbbaa.', '..abbbbbbbbbbba.', '...abbbbbbbbba..', '....aabbbbbaa...', '......aaaaa.....', '................', '................', '................', '................'];
+const STICK = ['................', '............aa..', '...........abba.', '..........abba..', '.........abba...', '........abba....', '.......abba.....', '......abba......', '.....abba.......', '....abba........', '...abba.........', '..abba..........', '.abba...........', '.aa.............', '................', '................'];
+const PILE = ['................', '................', '................', '................', '................', '................', '.......aa.......', '.....aabbaa.....', '....abbcbbba....', '...abbbbbcbba...', '..abcbbbbbbbba..', '.abbbbbcbbbbbba.', '.aaaaaaaaaaaaaa.', '................', '................', '................'];
+const COIL = ['................', '................', '.......aa.......', '.....aabbaa.....', '....ab....ba....', '...ab.aaaa.ba...', '...ab.abba.ba...', '...ab.ab.a.ba...', '...ab..aa..ba...', '....ab....ba....', '.....abbbba.....', '.......aa..b....', '............b...', '.............b..', '................', '................'];
+const mat = (rows, a, b, c, d) => ({ rows, palette: { a, b, c: c ?? b, d: d ?? b } });
+Object.assign(ART, {
+  coal: mat(LUMP, '#0a0a0a', '#2a2a2a', '#555555'),
+  iron: mat(INGOT, '#3a3a3a', '#d8d8d8', '#ffffff', '#a0a0a0'),
+  gold: mat(INGOT, '#6a4a00', '#f4d03a', '#fff4a0', '#c8a020'),
+  diamond: mat(GEM, '#0a4a48', '#6af0e8', '#e0ffff', '#30b0a8'),
+  emerald: mat(GEM, '#0a3a1a', '#40e080', '#c0ffd0', '#20a050'),
+  stick: mat(STICK, '#3a2410', '#8a6030'),
+  gunpowder: mat(PILE, '#222222', '#606060', '#909090'),
+  string: mat(COIL, '#888888', '#f0f0f0'),
+});
+
+// Draw art at a pixel scale onto a canvas.
 export function drawArt(canvas, art, scale = 3) {
   canvas.width = canvas.height = 16 * scale;
   const g = canvas.getContext('2d');

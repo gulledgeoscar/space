@@ -9,6 +9,7 @@ import { BIOME } from '../world/generator.js';
 import { CHUNK, chunkKey } from '../world/constants.js';
 import { B, SOLID, LIQUID } from '../world/blocks.js';
 import { PlayerAvatar } from './avatar.js';
+import { Dragon } from './dragon.js';
 
 const ray = new THREE.Ray();
 const box3 = new THREE.Box3();
@@ -55,6 +56,7 @@ export class EntityManager {
         case 'falling_block': e = new FallingBlock(g, opts); break;
         case 'item': e = new DroppedItem(g, opts); break;
         case 'nuke': e = new Nuke(g); break;
+        case 'dragon': e = new Dragon(g); p.y = Math.max(p.y + 20, opts.y ?? 0); if (opts.health) e.health = opts.health; break;
         case 'car': e = new Car(g, opts); e.place(p, opts.yaw ?? 0); break;
         case 'truck': e = new Car(g, { ...opts, truck: true }); e.place(p, opts.yaw ?? 0); break;
         case 'boat': e = new Boat(g); e.yaw = opts.yaw ?? 0; break;
@@ -285,15 +287,26 @@ export class EntityManager {
       this.dormant.delete(c.key);
       for (const s of parked) this.restoreOne(s);
     }
-    if (c.fromSave || !this.game.mobSpawning) return;
-    if (Math.random() > 0.07) return;
+    if (c.fromSave) return;
     const g = this.game;
+    // Villagers (and a golem to guard them) move into new villages.
+    for (const v of g.generator.villages.centersIn(c.cx, c.cz)) {
+      const n = 4 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < n; i++) {
+        const b = v.buildings[1 + (i % (v.buildings.length - 1))] ?? v.buildings[0];
+        const x = b.x + 0.5 + (Math.random() - 0.5) * 2, z = b.z + 0.5 + (Math.random() - 0.5) * 2;
+        this.dormantSpawn(x, z, 'villager');
+      }
+      this.dormantSpawn(v.x + 4.5, v.z + 0.5, 'golem');
+    }
+    if (!g.mobSpawning) return;
+    if (Math.random() > 0.07) return;
     const x = c.cx * CHUNK + 4 + Math.floor(Math.random() * 8), z = c.cz * CHUNK + 4 + Math.floor(Math.random() * 8);
     const [, biome] = g.generator.column(x, z);
     const options = {
       [BIOME.PLAINS]: ['cow', 'sheep', 'pig', 'horse', 'chicken'], [BIOME.FOREST]: ['pig', 'chicken', 'wolf', 'sheep'], [BIOME.BIRCH]: ['pig', 'chicken', 'sheep'],
       [BIOME.TAIGA]: ['wolf', 'sheep'], [BIOME.TUNDRA]: ['wolf'], [BIOME.JUNGLE]: ['chicken', 'pig'], [BIOME.SWAMP]: ['pig', 'chicken'],
-      [BIOME.CHERRY]: ['sheep', 'pig'], [BIOME.MOUNTAINS]: ['sheep'], [BIOME.MUSHROOM]: ['cow'], [BIOME.DESERT]: [], [BIOME.BEACH]: ['chicken'],
+      [BIOME.CHERRY]: ['sheep', 'pig'], [BIOME.MOUNTAINS]: ['sheep'], [BIOME.MUSHROOM]: ['cow'], [BIOME.DESERT]: [], [BIOME.BEACH]: ['chicken'], [BIOME.OCEAN]: ['fish'], [BIOME.FROZEN_OCEAN]: ['fish'],
     }[biome] ?? [];
     if (!options.length) return;
     const type = options[(Math.random() * options.length) | 0];
@@ -304,9 +317,24 @@ export class EntityManager {
       const top = g.world.surfaceY(sx, sz, true);
       if (top < 0) continue;
       const id = g.world.getBlock(sx, top, sz);
+      if (type === 'fish') {
+        if (LIQUID[id] === 1 && LIQUID[g.world.getBlock(sx, top - 2, sz)] === 1) this.spawn('fish', { x: sx + 0.5, y: top - 1.5, z: sz + 0.5 });
+        continue;
+      }
       if (LIQUID[id] || !SOLID[id]) continue;
       this.spawn(type, { x: sx + 0.5, y: top + 1, z: sz + 0.5 });
     }
+  }
+
+  // Spawn on the surface now if the chunk is loaded, else park it for later.
+  dormantSpawn(x, z, type) {
+    const g = this.game;
+    if (g.world.isLoaded(x, z)) {
+      const top = g.world.surfaceY(Math.floor(x), Math.floor(z), true);
+      if (top >= 0) { this.spawn(type, { x, y: top + 1, z }); return; }
+    }
+    const k = chunkKey(Math.floor(x / CHUNK), Math.floor(z / CHUNK));
+    this.dormant.set(k, (this.dormant.get(k) ?? []).concat([{ type, x, y: 120, z, needsGround: true }]));
   }
 
   onChunkUnload(c) {
@@ -376,6 +404,10 @@ export class EntityManager {
 
   restoreOne(s) {
     try {
+      if (s.needsGround) {
+        const top = this.game.world.surfaceY(Math.floor(s.x), Math.floor(s.z), true);
+        s = { ...s, y: top >= 0 ? top + 1 : s.y };
+      }
       const e = this.spawn(s.type, { x: s.x, y: s.y + 0.02, z: s.z }, s);
       if (e && s.type === 'item') e.stack = s.stack;
     } catch (err) { console.warn('could not restore entity', s, err); }

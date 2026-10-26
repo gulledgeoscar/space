@@ -135,6 +135,16 @@ export class Game {
 
   // Scan outward in a spiral for a dry column using the generator directly.
   findLandNear(x0, z0) {
+    // Start next to a village when there's one nearby.
+    let best = null;
+    for (const v of this.generator.villages.near(x0 - 700, z0 - 700, x0 + 700, z0 + 700)) {
+      const d = Math.hypot(v.x - x0, v.z - z0);
+      if (!best || d < best.d) best = { d, v };
+    }
+    if (best) {
+      const x = best.v.x + 6, z = best.v.z + 1;
+      return { x, y: this.generator.column(x, z)[0] + 1.01, z };
+    }
     for (let r = 0; r < 4000; r += 24) {
       const steps = Math.max(1, Math.floor((r * Math.PI * 2) / 24));
       for (let k = 0; k < steps; k++) {
@@ -343,6 +353,8 @@ export class Game {
       this.elapsed += sdt;
     }
     this.weather.update(sdt, dt);
+    this.musicTimer = (this.musicTimer ?? 20) - dt;
+    if (this.musicTimer <= 0) { this.musicTimer = 70 + Math.random() * 120; this.audio.playMusic(this.sky.nightness > 0.6); }
     this.particles.update(sdt);
     p.applyCamera(this.camera, this.thirdPerson, dt);
     if (this.shake > 0) {

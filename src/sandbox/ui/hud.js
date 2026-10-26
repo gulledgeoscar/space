@@ -48,6 +48,7 @@ export class Hud {
         <div class="mode-hint"></div>
       </div>
       <div class="ammo"></div>
+      <div class="bossbar"><span></span><div><div></div></div></div>
       <div class="bubbles"></div>
     `;
     this.el = (sel) => this.root.querySelector(sel);
@@ -191,6 +192,15 @@ export class Hud {
       const extra = v.type === 'plane' ? ` · throttle ${Math.round(v.throttle * 100)}% · alt ${Math.round(v.pos.y)}` : v.type === 'helicopter' ? ` · alt ${Math.round(v.pos.y)}` : '';
       vi.innerHTML = `<b>${Math.round(sp * 3.6)}</b> km/h${extra}<div class="hpbar"><div style="width:${hp * 100}%"></div></div>`;
     } else vi.style.display = 'none';
+
+    // Boss health.
+    const boss = g.entities.list.find((e) => e.type === 'dragon' && !e.removed && e.pos.distanceTo(p.position) < 160);
+    const bb = this.el('.bossbar');
+    bb.style.display = boss ? 'block' : 'none';
+    if (boss) {
+      bb.querySelector('span').textContent = boss.name;
+      bb.querySelector('div div').style.width = `${Math.max(0, boss.health / boss.maxHealth) * 100}%`;
+    }
 
     // Compass / coords / time.
     if (g.settings.showCoords !== false) {

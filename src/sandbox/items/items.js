@@ -4,7 +4,7 @@ import { BLOCKS, inventoryBlocks } from '../world/blocks.js';
 
 export const TOOLS = {
   hand: { name: 'Hand', category: 'Tools', desc: 'Punch blocks and creatures. Right-click creatures to ride or feed them.' },
-  pickaxe: { name: 'Diamond Pickaxe', category: 'Tools', desc: 'Mines everything fast.' },
+  pickaxe: { name: 'Pickaxe', category: 'Tools', desc: 'Mines everything fast.' },
   sword: { name: 'Diamond Sword', category: 'Weapons', desc: 'Melee weapon. 7 damage.' },
   pistol: { name: 'Pistol', category: 'Weapons', desc: 'Semi-automatic. Left-click to fire.', ammo: 12, reload: 1.1 },
   rifle: { name: 'Assault Rifle', category: 'Weapons', desc: 'Fully automatic. Hold left-click.', ammo: 30, reload: 1.6 },
@@ -32,7 +32,17 @@ export const TOOLS = {
   apple: { name: 'Apple', category: 'Food', desc: 'Restores 4 hunger. Hold right-click to eat.', food: 4 },
   bread: { name: 'Bread', category: 'Food', desc: 'Restores 5 hunger.', food: 5 },
   steak: { name: 'Steak', category: 'Food', desc: 'Restores 8 hunger.', food: 8 },
+  coal: { name: 'Coal', category: 'Materials', desc: 'Mined from coal ore. Used for torches and smelting.' },
+  iron: { name: 'Iron Ingot', category: 'Materials', desc: 'Mined from iron ore.' },
+  gold: { name: 'Gold Ingot', category: 'Materials', desc: 'Mined from gold ore.' },
+  diamond: { name: 'Diamond', category: 'Materials', desc: 'Found deep underground.' },
+  emerald: { name: 'Emerald', category: 'Materials', desc: 'Found in the mountains.' },
+  stick: { name: 'Stick', category: 'Materials', desc: 'Made from planks.' },
+  gunpowder: { name: 'Gunpowder', category: 'Materials', desc: 'Dropped by Bombers. Explosive.' },
+  string: { name: 'String', category: 'Materials', desc: 'Dropped by spiders.' },
 };
+
+export const MATERIALS = ['coal', 'iron', 'gold', 'diamond', 'emerald', 'stick', 'gunpowder', 'string'];
 
 export const SPAWNS = {
   // creatures
@@ -48,6 +58,8 @@ export const SPAWNS = {
   bomber: { name: 'Bomber', category: 'Monsters', color: '#40c040' },
   spider: { name: 'Spider', category: 'Monsters', color: '#3a2a2a' },
   golem: { name: 'Iron Golem', category: 'Creatures', color: '#d0d0d0' },
+  fish: { name: 'Fish', category: 'Creatures', color: '#f08030' },
+  dragon: { name: 'Dragon', category: 'Monsters', color: '#5a2a7a' },
   // vehicles
   car: { name: 'Car', category: 'Vehicles', color: '#d03030' },
   truck: { name: 'Monster Truck', category: 'Vehicles', color: '#3060d0' },
@@ -97,4 +109,4 @@ export function creativeCatalog() {
 }
 
 export const MAX_STACK = 64;
-export const stackable = (s) => s && (s.kind === 'block' || (s.kind === 'tool' && (TOOLS[s.key]?.food || ['grenade', 'snowball', 'fireworks'].includes(s.key))) || s.kind === 'spawn');
+export const stackable = (s) => s && (s.kind === 'block' || (s.kind === 'tool' && (TOOLS[s.key]?.food || TOOLS[s.key]?.category === 'Materials' || ['grenade', 'snowball', 'fireworks'].includes(s.key))) || s.kind === 'spawn');

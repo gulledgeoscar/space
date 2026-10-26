@@ -40,6 +40,18 @@ export class Audio {
     this.muffle.frequency.value = 20000;
     this.comp = c.createDynamicsCompressor();
     this.master.connect(this.muffle).connect(this.comp).connect(c.destination);
+    // Music bypasses the underwater muffle and has its own level and echo.
+    this.musicGain = c.createGain();
+    this.musicGain.gain.value = this.musicVolume ?? 0.5;
+    const delay = c.createDelay(1);
+    delay.delayTime.value = 0.42;
+    const fb = c.createGain(); fb.gain.value = 0.35;
+    const wet = c.createGain(); wet.gain.value = 0.4;
+    this.musicIn = c.createGain();
+    this.musicIn.connect(this.musicGain);
+    this.musicIn.connect(delay).connect(fb).connect(delay);
+    delay.connect(wet).connect(this.musicGain);
+    this.musicGain.connect(this.comp);
     const len = c.sampleRate * 2;
     this.noise = c.createBuffer(1, len, c.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -52,6 +64,46 @@ export class Audio {
   }
 
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
+  setMusicVolume(v) { this.musicVolume = v; if (this.musicGain) this.musicGain.gain.value = v; }
+
+  // A short generative phrase: soft plucked notes on a pentatonic scale
+  // over a low drone. Night phrases are slower and in a minor key.
+  playMusic(night) {
+    if (!this.ctx || !(this.musicVolume ?? 0.5) || !this.volume) return;
+    const c = this.ctx;
+    const root = night ? 196 : 261.6;
+    const scale = night ? [0, 3, 5, 7, 10, 12, 15] : [0, 2, 4, 7, 9, 12, 14, 16];
+    const beat = night ? 0.9 : 0.6;
+    const t0 = c.currentTime + 0.1;
+    const notes = 10 + Math.floor(Math.random() * 10);
+    let step = Math.floor(Math.random() * scale.length);
+    for (let i = 0; i < notes; i++) {
+      step = Math.max(0, Math.min(scale.length - 1, step + Math.floor(Math.random() * 5) - 2));
+      if (Math.random() < 0.2) continue;
+      const f = root * 2 ** (scale[step] / 12);
+      const t = t0 + i * beat + (Math.random() < 0.3 ? beat / 2 : 0);
+      for (const [type, mult, g] of [['triangle', 1, 0.09], ['sine', 2, 0.03]]) {
+        const o = c.createOscillator(); o.type = type; o.frequency.value = f * mult;
+        const env = c.createGain();
+        env.gain.setValueAtTime(0.0001, t);
+        env.gain.exponentialRampToValueAtTime(g, t + 0.02);
+        env.gain.exponentialRampToValueAtTime(0.0001, t + beat * 3);
+        o.connect(env).connect(this.musicIn);
+        o.start(t); o.stop(t + beat * 3 + 0.1);
+      }
+    }
+    // Drone.
+    const len = notes * beat + 2;
+    for (const mult of [0.5, 0.75]) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = root * mult;
+      const env = c.createGain();
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(0.035, t0 + 2);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      o.connect(env).connect(this.musicIn);
+      o.start(t0); o.stop(t0 + len + 0.1);
+    }
+  }
 
   setUnderwater(on) {
     if (!this.ctx) return;

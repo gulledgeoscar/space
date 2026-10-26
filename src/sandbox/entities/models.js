@@ -259,6 +259,18 @@ export function buildModel(entity, type) {
       const hair = box(entity, 0.52, 0.12, 0.52, 0x4a2a10); hair.position.y = 0.48; m.head.add(hair);
       return m;
     }
+    case 'fish': {
+      const root = new THREE.Group();
+      const c = entity.fishColor ?? 0xf08030;
+      const body = box(entity, 0.18, 0.3, 0.5, c);
+      body.position.y = 0.2;
+      const tail = new THREE.Group(); tail.position.set(0, 0.2, -0.25);
+      const fin = box(entity, 0.04, 0.3, 0.22, 0xffffff); fin.position.z = -0.1; tail.add(fin);
+      const eye = box(null, 0.2, 0.06, 0.06, 0x101010); eye.position.set(0, 0.26, 0.17);
+      const top = box(entity, 0.04, 0.12, 0.2, 0xffffff); top.position.set(0, 0.4, 0);
+      root.add(body, tail, eye, top);
+      return { root, legs: [], arms: [], head: null, body, tail, fish: true };
+    }
     case 'dummy': {
       return humanoid(entity, { skin: 0xe0c090, bodyColor: 0xd0b080, legColor: 0xc0a070, armColor: 0xe0c090, face: FACES.dummy() });
     }

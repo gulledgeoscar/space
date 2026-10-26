@@ -14,6 +14,7 @@ const ui = document.getElementById('ui-root');
 const settings = loadSettings();
 const audio = new Audio();
 audio.setVolume(settings.volume);
+audio.setMusicVolume(settings.music);
 let atlas = null;
 let game = null;
 

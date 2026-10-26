@@ -4,6 +4,7 @@ import { creativeCatalog, stackName, TOOLS, SPAWNS, sameItem, stackable, MAX_STA
 import { iconFor } from './icons.js';
 import { BLOCKS } from '../world/blocks.js';
 import { saveSettings } from './settings.js';
+import { RECIPES, canCraft, craft, ingredientStack } from '../items/crafting.js';
 
 const h = (html) => {
   const t = document.createElement('template');
@@ -152,20 +153,21 @@ export class Menus {
       <label>Field of view <b data-v="fov">${s.fov}</b><input type="range" min="50" max="110" step="1" value="${s.fov}" data-k="fov"></label>
       <label>Mouse sensitivity <b data-v="sens">${s.sensitivity.toFixed(2)}</b><input type="range" min="0.2" max="3" step="0.05" value="${s.sensitivity}" data-k="sensitivity"></label>
       <label>Volume <b data-v="vol">${Math.round(s.volume * 100)}%</b><input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-k="volume"></label>
+      <label>Music <b data-v="mus">${Math.round(s.music * 100)}%</b><input type="range" min="0" max="1" step="0.05" value="${s.music}" data-k="music"></label>
       <label>Resolution scale <b data-v="pr">${s.pixelRatio}</b><input type="range" min="0.5" max="2" step="0.25" value="${s.pixelRatio}" data-k="pixelRatio"></label>
       <label class="check"><input type="checkbox" data-k="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
       <label class="check"><input type="checkbox" data-k="viewBob" ${s.viewBob !== false ? 'checked' : ''}> View bobbing</label>
       <label class="check"><input type="checkbox" data-k="showCoords" ${s.showCoords !== false ? 'checked' : ''}> Show coordinates &amp; time</label>
       <button class="primary">Done</button>
     </div></div>`);
-    const labels = { renderDistance: 'rd', fov: 'fov', sensitivity: 'sens', volume: 'vol', pixelRatio: 'pr' };
+    const labels = { renderDistance: 'rd', fov: 'fov', sensitivity: 'sens', volume: 'vol', pixelRatio: 'pr', music: 'mus' };
     el.querySelectorAll('input').forEach((inp) => {
       inp.oninput = () => {
         const k = inp.dataset.k;
         const v = inp.type === 'checkbox' ? inp.checked : parseFloat(inp.value);
         s[k] = v;
         const lab = el.querySelector(`[data-v=${labels[k]}]`);
-        if (lab) lab.textContent = k === 'volume' ? `${Math.round(v * 100)}%` : k === 'sensitivity' ? v.toFixed(2) : v;
+        if (lab) lab.textContent = k === 'volume' || k === 'music' ? `${Math.round(v * 100)}%` : k === 'sensitivity' ? v.toFixed(2) : v;
         this.applySettings();
       };
     });
@@ -177,6 +179,7 @@ export class Menus {
     const g = this.game, s = g.settings;
     g.world.renderDistance = s.renderDistance;
     g.audio.setVolume(s.volume);
+    g.audio.setMusicVolume(s.music);
     g.renderer.setPixelRatio(Math.min(window.devicePixelRatio * 2, s.pixelRatio));
     g.camera.fov = s.fov;
     g.camera.updateProjectionMatrix();
@@ -251,7 +254,7 @@ export class Menus {
     const el = h(`<div class="overlay"><div class="card inventory ${creative ? 'creative' : ''}">
       ${creative ? `<div class="tabs"></div><input class="search" placeholder="Search everything…" value="${this.search}"><div class="catalog"></div>` : '<h2>Inventory</h2>'}
       <div class="desc"></div>
-      ${creative ? '' : '<div class="grid main"></div>'}
+      ${creative ? '' : '<h3>Crafting</h3><div class="crafting"></div><div class="grid main"></div>'}
       <div class="grid hot"></div>
       <p class="sub">${creative ? 'Click an item to put it in the selected hotbar slot. Click a hotbar slot to select it. Right-click a slot to clear it.' : 'Click to pick up and place stacks.'}</p>
     </div></div>`);
@@ -289,7 +292,24 @@ export class Menus {
       main.innerHTML = '';
       g.inventory.main.forEach((s, i) => main.appendChild(slotEl(s, (e, right) => { this.cursorClick(i + 9, right); renderHot(); renderMain(); })));
     };
-    renderHot(); renderMain();
+    const renderCraft = () => {
+      const box = el.querySelector('.crafting');
+      if (!box) return;
+      box.innerHTML = '';
+      const sorted = [...RECIPES].sort((a, b) => canCraft(g.inventory, b) - canCraft(g.inventory, a));
+      for (const r of sorted) {
+        const ok = canCraft(g.inventory, r);
+        const row = document.createElement('button');
+        row.className = `recipe ${ok ? 'ok' : ''}`;
+        row.disabled = !ok;
+        row.innerHTML = `<img src="${iconFor(g, r.out)}" alt=""><span class="n">${r.out.count > 1 ? `${r.out.count}×` : ''}</span>
+          <span class="needs">${r.needs.map(([ing, n]) => `<img src="${iconFor(g, ingredientStack(ing))}" alt=""><small>${n}</small>`).join('')}</span>`;
+        row.onmouseenter = () => describe(r.out);
+        row.onclick = () => { if (craft(g.inventory, r)) { g.audio.play('pop'); renderCraft(); renderHot(); renderMain(); } };
+        box.appendChild(row);
+      }
+    };
+    renderHot(); renderMain(); renderCraft();
     if (!creative) return;
 
     const cat = creativeCatalog();
@@ -298,7 +318,8 @@ export class Menus {
       Nature: cat.blocks.filter((s) => s.category === 'Nature'),
       Colors: cat.blocks.filter((s) => s.category === 'Colors'),
       'Light & Special': cat.blocks.filter((s) => s.category === 'Light' || s.category === 'Special'),
-      'Tools & Weapons': cat.tools,
+      'Tools & Weapons': cat.tools.filter((s) => s.category !== 'Materials'),
+      Materials: cat.tools.filter((s) => s.category === 'Materials'),
       Creatures: cat.spawns.filter((s) => s.category === 'Creatures' || s.category === 'Monsters'),
       'Vehicles & Props': cat.spawns.filter((s) => ['Vehicles', 'Props', 'Explosives'].includes(s.category)),
       Structures: cat.spawns.filter((s) => s.category === 'Structures'),
