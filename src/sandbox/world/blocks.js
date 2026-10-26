@@ -43,6 +43,7 @@ function def(id, key, name, opts = {}) {
     block.opaque = false;
     if (opts.filter === undefined) block.filter = block.render === 'cutout' ? 1 : 0;
   }
+  if (block.shape === 'door') block.solid = true;
   if (block.shape === 'cross' || block.shape === 'torch') {
     block.solid = opts.solid ?? false;
     block.opaque = false;
@@ -52,6 +53,7 @@ function def(id, key, name, opts = {}) {
   // texture layers for the six faces in mesher order: +x -x +y -y +z -z
   block.faceTex = [tex(faces.side), tex(faces.side), tex(faces.top), tex(faces.bottom), tex(faces.side), tex(faces.side)];
   if (opts.texFront) block.faceTex[4] = tex(opts.texFront);
+  if (opts.texTop) block.topTex = tex(opts.texTop);
   BLOCKS[id] = block;
   B[key] = id;
   return block;
@@ -162,6 +164,29 @@ def(117, 'jungle_log', 'Jungle Log', { tex: { top: 'jungle_log_top', side: 'jung
 def(118, 'jungle_leaves', 'Jungle Leaves', { render: 'cutout', hardness: 0.2, flammable: true, sound: 'grass', category: 'Nature', color: 0x2a8a20 });
 def(119, 'vines', 'Vines', { render: 'cutout', shape: 'cross', hardness: 0, flammable: true, category: 'Nature', sound: 'grass', color: 0x2a7a20, climbable: true });
 
+// Doors: orientation 0..3 (facing -z, -x, +z, +x) times closed/open.
+// Both halves of a door use the same id; the mesher picks the top texture.
+const T = 3 / 16;
+const DOOR_BOXES = [
+  [[0, 0, 0, 1, 1, T], [0, 0, 0, T, 1, 1]],
+  [[0, 0, 0, T, 1, 1], [0, 0, 1 - T, 1, 1, 1]],
+  [[0, 0, 1 - T, 1, 1, 1], [1 - T, 0, 0, 1, 1, 1]],
+  [[1 - T, 0, 0, 1, 1, 1], [0, 0, 0, 1, 1, T]],
+];
+export const DOOR = 120;
+for (let o = 0; o < 4; o++) for (let open = 0; open < 2; open++) {
+  const id = DOOR + o * 2 + open;
+  def(id, o === 0 && !open ? 'door' : `door_${o}_${open}`, 'Door', {
+    tex: 'door_bottom', texTop: 'door_top', shape: 'door', render: 'cutout', opaque: false, filter: 0,
+    hardness: 1, flammable: true, sound: 'wood', category: 'Decor', color: 0x9a7040,
+    hidden: !(o === 0 && !open), boxes: [DOOR_BOXES[o][open]], door: { o, open },
+  });
+}
+export const isDoor = (id) => id >= DOOR && id < DOOR + 8;
+def(128, 'bed', 'Bed', { tex: { top: 'bed_top', side: 'bed_side', bottom: 'planks' }, shape: 'slab', opaque: false, filter: 0, hardness: 0.3, sound: 'cloth', category: 'Decor', color: 0xc03030, flammable: true });
+def(129, 'chest', 'Chest', { tex: { top: 'chest_top', side: 'chest_side' }, texFront: 'chest_front', hardness: 1, sound: 'wood', category: 'Decor', color: 0xa07030, flammable: true });
+def(130, 'note_block', 'Note Block', { tex: 'note_block', hardness: 0.8, sound: 'wood', category: 'Special', color: 0x7a4a2a });
+
 // Flowing liquids. Level 1 is next to the source (or falling), 7 is the thinnest.
 export const WATER_FLOW = 200; // ids 201..207
 export const LAVA_FLOW = 210;  // ids 211..217
@@ -184,7 +209,7 @@ export const SHAPE = new Uint8Array(256);    // 0 cube, 1 cross, 2 torch, 3 liqu
 export const LIQUID = new Uint8Array(256);   // 0 none, 1 water, 2 lava
 export const LEVEL = new Uint8Array(256);
 const RENDER_CODES = { none: 0, opaque: 1, cutout: 2, translucent: 3 };
-const SHAPE_CODES = { cube: 0, cross: 1, torch: 2, liquid: 3, slab: 4 };
+const SHAPE_CODES = { cube: 0, cross: 1, torch: 2, liquid: 3, slab: 4, door: 5 };
 for (let id = 0; id < 256; id++) {
   const b = BLOCKS[id];
   if (!b) { FILTER[id] = 0; continue; }

@@ -36,12 +36,15 @@ const skyFragment = /* glsl */`
   }
 `;
 
+// Clouds are ray-traced against a flat layer from a dome around the camera,
+// so the layer has no polygon seams.
+const CLOUD_Y = 150;
 const cloudVertex = /* glsl */`
-  varying vec3 vWorld;
+  varying vec3 vDir;
   void main() {
-    vec4 w = modelMatrix * vec4(position, 1.0);
-    vWorld = w.xyz;
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vDir = position;
+    vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_Position = p.xyww;
   }
 `;
 const cloudFragment = /* glsl */`
@@ -49,7 +52,7 @@ const cloudFragment = /* glsl */`
   uniform vec3 color;
   uniform float cover;
   uniform vec3 camPos;
-  varying vec3 vWorld;
+  varying vec3 vDir;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float vnoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
@@ -57,12 +60,17 @@ const cloudFragment = /* glsl */`
     return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
   }
   void main() {
-    vec2 p = vWorld.xz + vec2(time * 2.0, time * 0.6);
+    vec3 d = normalize(vDir);
+    float t = (${CLOUD_Y.toFixed(1)} - camPos.y) / d.y;
+    if (t <= 0.0 || abs(d.y) < 1e-3) discard;
+    vec2 hit = camPos.xz + d.xz * t;
+    float dist = length(hit - camPos.xz);
+    if (dist > 1100.0) discard;
+    vec2 p = hit + vec2(time * 2.0, time * 0.6);
     vec2 cell = floor(p / 12.0);
     float n = vnoise(cell * 0.18) * 0.65 + vnoise(cell * 0.5) * 0.35;
     if (n < 1.0 - cover) discard;
-    float dist = length(vWorld.xz - camPos.xz);
-    float fade = 1.0 - smoothstep(500.0, 900.0, dist);
+    float fade = 1.0 - smoothstep(500.0, 1000.0, dist);
     vec2 f = fract(p / 12.0);
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
     gl_FragColor = vec4(color * (0.92 + 0.08 * step(0.08, edge)), 0.82 * fade);
@@ -122,12 +130,12 @@ export class Sky {
       camPos: { value: new THREE.Vector3() },
     };
     this.clouds = new THREE.Mesh(
-      new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2),
-      new THREE.ShaderMaterial({ vertexShader: cloudVertex, fragmentShader: cloudFragment, uniforms: this.cloudUniforms, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.SphereGeometry(880, 32, 16),
+      new THREE.ShaderMaterial({ vertexShader: cloudVertex, fragmentShader: cloudFragment, uniforms: this.cloudUniforms, transparent: true, depthWrite: false, side: THREE.BackSide }),
     );
-    this.clouds.renderOrder = 3;
+    this.clouds.renderOrder = -8;
     this.clouds.frustumCulled = false;
-    scene.add(this.clouds);
+    this.group.add(this.clouds);
 
     this.daylight = 1;
     this.fogColor = new THREE.Color();
@@ -205,6 +213,5 @@ export class Sky {
     const cc = this.cloudUniforms.color.value;
     cc.setRGB(1, 1, 1).multiplyScalar(0.03 + 0.97 * day * day).lerp(h, set * 0.3);
     if (storm) cc.multiplyScalar(1 - storm * 0.6);
-    this.clouds.position.set(camera.position.x, 150, camera.position.z);
   }
 }

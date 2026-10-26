@@ -6,96 +6,74 @@ import { BLOCKS, SOLID } from '../world/blocks.js';
 
 const EPS = 1e-4;
 
-// Collision interval [y0, y1] inside a block, or null when passable.
-function blockSpan(id) {
-  if (id < 0) return [0, 1]; // unloaded: solid
-  if (!SOLID[id]) return null;
-  if (BLOCKS[id].shape === 'slab') return [0, 0.5];
-  return [0, 1];
+// Collision boxes of a block in block-local units [x0, y0, z0, x1, y1, z1],
+// or null when passable. Blocks can define their own via `boxes`.
+const FULL = [[0, 0, 0, 1, 1, 1]];
+const boxCache = [];
+export function blockBoxes(id) {
+  if (id < 0) return FULL; // unloaded: solid
+  if (boxCache[id] !== undefined) return boxCache[id];
+  const b = BLOCKS[id];
+  let out = null;
+  if (b && SOLID[id]) out = b.boxes ?? (b.shape === 'slab' ? [[0, 0, 0, 1, 0.5, 1]] : FULL);
+  boxCache[id] = out;
+  return out;
 }
 
-// Moves the box along one axis, clipping against solid blocks and any
-// extra AABBs ({min:{x,y,z}, max:{x,y,z}}). Returns the distance moved.
+const emin = [0, 0, 0], emax = [0, 0, 0];
+
+// Moves the box along one axis (0 x, 1 y, 2 z), clipping against block
+// collision boxes and any extra AABBs ({min:{x,y,z}, max:{x,y,z}}).
+// Returns the distance actually moved.
 export function moveAxis(world, box, axis, d, extra) {
   if (d === 0) return 0;
-  const x0 = box.x - box.hw, x1 = box.x + box.hw;
-  const z0 = box.z - box.hw, z1 = box.z + box.hw;
-  const y0 = box.y, y1 = box.y + box.h;
+  emin[0] = box.x - box.hw; emax[0] = box.x + box.hw;
+  emin[1] = box.y; emax[1] = box.y + box.h;
+  emin[2] = box.z - box.hw; emax[2] = box.z + box.hw;
   let moved = d;
-
-  if (axis === 1) {
-    const bx0 = Math.floor(x0 + EPS), bx1 = Math.floor(x1 - EPS);
-    const bz0 = Math.floor(z0 + EPS), bz1 = Math.floor(z1 - EPS);
-    if (d < 0) {
-      const from = Math.floor(y0 + EPS), to = Math.floor(y0 + d);
-      for (let by = from; by >= to; by--) for (let bz = bz0; bz <= bz1; bz++) for (let bx = bx0; bx <= bx1; bx++) {
-        const s = blockSpan(world.getBlock(bx, by, bz));
-        if (!s) continue;
-        const top = by + s[1];
-        if (top <= y0 + EPS && top > y0 + moved) moved = top - y0;
-      }
+  const lo = [0, 0, 0], hi = [0, 0, 0];
+  for (let a = 0; a < 3; a++) {
+    if (a === axis) {
+      lo[a] = Math.floor(Math.min(emin[a], emin[a] + d) - EPS);
+      hi[a] = Math.floor(Math.max(emax[a], emax[a] + d) + EPS);
     } else {
-      const from = Math.floor(y1 - EPS), to = Math.floor(y1 + d);
-      for (let by = from; by <= to; by++) for (let bz = bz0; bz <= bz1; bz++) for (let bx = bx0; bx <= bx1; bx++) {
-        const s = blockSpan(world.getBlock(bx, by, bz));
-        if (!s) continue;
-        const bot = by + s[0];
-        if (bot >= y1 - EPS && bot < y1 + moved) moved = bot - y1;
-      }
-    }
-    if (extra) for (const e of extra) {
-      if (e.max.x <= x0 || e.min.x >= x1 || e.max.z <= z0 || e.min.z >= z1) continue;
-      if (d < 0 && e.max.y <= y0 + EPS && e.max.y > y0 + moved) moved = e.max.y - y0;
-      if (d > 0 && e.min.y >= y1 - EPS && e.min.y < y1 + moved) moved = e.min.y - y1;
-    }
-    box.y += moved;
-    return moved;
-  }
-
-  // Horizontal axes.
-  const lo = axis === 0 ? x0 : z0, hi = axis === 0 ? x1 : z1;
-  const by0 = Math.floor(y0 + EPS), by1 = Math.floor(y1 - EPS);
-  const o0 = Math.floor((axis === 0 ? z0 : x0) + EPS), o1 = Math.floor((axis === 0 ? z1 : x1) - EPS);
-  if (d < 0) {
-    const from = Math.floor(lo + EPS), to = Math.floor(lo + d);
-    for (let b = from - 1; b >= to; b--) for (let o = o0; o <= o1; o++) for (let by = by0; by <= by1; by++) {
-      const id = axis === 0 ? world.getBlock(b, by, o) : world.getBlock(o, by, b);
-      const s = blockSpan(id);
-      if (!s || by + s[1] <= y0 + EPS || by + s[0] >= y1 - EPS) continue;
-      const face = b + 1;
-      if (face <= lo + EPS && face > lo + moved) moved = face - lo;
-    }
-  } else {
-    const from = Math.floor(hi - EPS), to = Math.floor(hi + d);
-    for (let b = from + 1; b <= to; b++) for (let o = o0; o <= o1; o++) for (let by = by0; by <= by1; by++) {
-      const id = axis === 0 ? world.getBlock(b, by, o) : world.getBlock(o, by, b);
-      const s = blockSpan(id);
-      if (!s || by + s[1] <= y0 + EPS || by + s[0] >= y1 - EPS) continue;
-      const face = b;
-      if (face >= hi - EPS && face < hi + moved) moved = face - hi;
+      lo[a] = Math.floor(emin[a] + EPS);
+      hi[a] = Math.floor(emax[a] - EPS);
     }
   }
-  if (extra) for (const e of extra) {
-    if (e.max.y <= y0 + EPS || e.min.y >= y1 - EPS) continue;
-    const oMin = axis === 0 ? e.min.z : e.min.x, oMax = axis === 0 ? e.max.z : e.max.x;
-    const oLo = axis === 0 ? z0 : x0, oHi = axis === 0 ? z1 : x1;
-    if (oMax <= oLo || oMin >= oHi) continue;
-    const eMin = axis === 0 ? e.min.x : e.min.z, eMax = axis === 0 ? e.max.x : e.max.z;
-    if (d < 0 && eMax <= lo + EPS && eMax > lo + moved) moved = eMax - lo;
-    if (d > 0 && eMin >= hi - EPS && eMin < hi + moved) moved = eMin - hi;
+  const clip = (bx0, by0, bz0, bx1, by1, bz1) => {
+    const bmin = [bx0, by0, bz0], bmax = [bx1, by1, bz1];
+    for (let a = 0; a < 3; a++) {
+      if (a === axis) continue;
+      if (bmax[a] <= emin[a] + EPS || bmin[a] >= emax[a] - EPS) return;
+    }
+    if (d > 0 && bmin[axis] >= emax[axis] - EPS && bmin[axis] - emax[axis] < moved) moved = Math.max(0, bmin[axis] - emax[axis]);
+    if (d < 0 && bmax[axis] <= emin[axis] + EPS && bmax[axis] - emin[axis] > moved) moved = Math.min(0, bmax[axis] - emin[axis]);
+  };
+  for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) for (let x = lo[0]; x <= hi[0]; x++) {
+    const boxes = blockBoxes(world.getBlock(x, y, z));
+    if (!boxes) continue;
+    for (const b of boxes) clip(x + b[0], y + b[1], z + b[2], x + b[3], y + b[4], z + b[5]);
   }
-  if (axis === 0) box.x += moved; else box.z += moved;
+  if (extra) for (const e of extra) clip(e.min.x, e.min.y, e.min.z, e.max.x, e.max.y, e.max.z);
+  if (axis === 0) box.x += moved; else if (axis === 1) box.y += moved; else box.z += moved;
   return moved;
 }
 
-// True when the box overlaps any solid block.
+// True when the box overlaps any block collision box.
 export function boxBlocked(world, box) {
-  const x0 = Math.floor(box.x - box.hw + EPS), x1 = Math.floor(box.x + box.hw - EPS);
-  const z0 = Math.floor(box.z - box.hw + EPS), z1 = Math.floor(box.z + box.hw - EPS);
-  const y0 = Math.floor(box.y + EPS), y1 = Math.floor(box.y + box.h - EPS);
-  for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-    const s = blockSpan(world.getBlock(x, y, z));
-    if (s && y + s[1] > box.y + EPS && y + s[0] < box.y + box.h - EPS) return true;
+  const x0 = box.x - box.hw, x1 = box.x + box.hw, z0 = box.z - box.hw, z1 = box.z + box.hw;
+  const y0 = box.y, y1 = box.y + box.h;
+  for (let y = Math.floor(y0 + EPS); y <= Math.floor(y1 - EPS); y++) {
+    for (let z = Math.floor(z0 + EPS); z <= Math.floor(z1 - EPS); z++) {
+      for (let x = Math.floor(x0 + EPS); x <= Math.floor(x1 - EPS); x++) {
+        const boxes = blockBoxes(world.getBlock(x, y, z));
+        if (!boxes) continue;
+        for (const b of boxes) {
+          if (x + b[3] > x0 + EPS && x + b[0] < x1 - EPS && y + b[4] > y0 + EPS && y + b[1] < y1 - EPS && z + b[5] > z0 + EPS && z + b[2] < z1 - EPS) return true;
+        }
+      }
+    }
   }
   return false;
 }

@@ -7,7 +7,7 @@ import { Weather } from './world/weather.js';
 import { BlockTicks } from './world/ticks.js';
 import { Generator, BIOME_NAMES } from './world/generator.js';
 import { CHUNK, HEIGHT, SEA_LEVEL } from './world/constants.js';
-import { BLOCKS, B, LIQUID } from './world/blocks.js';
+import { BLOCKS, B, LIQUID, isDoor } from './world/blocks.js';
 import { Player } from './player/player.js';
 import { Input } from './input.js';
 import { Particles } from './fx/particles.js';
@@ -50,6 +50,7 @@ export class Game {
     this.elapsed = 0;
     this.shake = 0;
     this.stats = { blocksBroken: 0, blocksPlaced: 0, kills: 0, explosions: 0 };
+    this.chests = new Map(); // "x,y,z" -> 27 slots
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixelRatio ?? 1.5));
@@ -86,6 +87,9 @@ export class Game {
     this.touch = new TouchControls(this);
 
     this.world.onChange((x, y, z, id, old) => {
+      // Chests spill their contents; doors lose their other half.
+      if (old === B.chest && id !== B.chest) this.dropChest(x, y, z);
+      if (isDoor(old) && !isDoor(id)) for (const dy of [-1, 1]) if (isDoor(this.world.getBlock(x, y + dy, z))) this.world.setBlock(x, y + dy, z, 0);
       this.ticks.onBlockChange(x, y, z, id, old);
       this.physics.onBlockChange(x, y, z);
     });
@@ -187,6 +191,7 @@ export class Game {
     else this.inventory.giveStarter();
     if (s.entities) this.entities.pendingRestore = s.entities;
     if (s.stats) this.stats = { ...this.stats, ...s.stats };
+    if (s.chests) this.chests = new Map(Object.entries(s.chests));
     this.restored = true;
   }
 
@@ -208,6 +213,7 @@ export class Game {
       inventory: this.inventory.save(),
       entities: this.entities.serialize(),
       stats: this.stats,
+      chests: Object.fromEntries(this.chests),
     };
   }
 
@@ -240,6 +246,32 @@ export class Game {
 
   message(text, color) { this.hud.message(text, color); }
 
+  chest(key) {
+    if (!this.chests.has(key)) this.chests.set(key, new Array(27).fill(null));
+    return this.chests.get(key);
+  }
+
+  dropChest(x, y, z) {
+    const key = `${x},${y},${z}`;
+    const items = this.chests.get(key);
+    this.chests.delete(key);
+    if (!items) return;
+    for (const s of items) if (s) this.entities.dropItem({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, s);
+  }
+
+  // Beds skip the night (and set your spawn point).
+  sleep(t) {
+    const p = this.player;
+    p.spawn.set(t.x + 0.5, t.y + 1, t.z + 0.5);
+    if (this.sky.nightness < 0.5 && this.weather.type !== 'storm') { this.message('Spawn point set. You can only sleep at night.'); return; }
+    if (this.mode === 'survival' && this.entities.list.some((e) => e.hostile && e.pos.distanceTo(p.position) < 10)) { this.message('You may not rest now; there are monsters nearby.', '#ff9090'); return; }
+    this.hud.fade(() => {
+      this.hours = 6.2;
+      if (this.weather.type !== 'clear') this.weather.set('clear');
+      this.message('Good morning!');
+    });
+  }
+
   command(text) { return runCommand(this, text); }
 
   onPlayerDeath(cause) {
@@ -269,6 +301,8 @@ export class Game {
     if (i.hit('KeyG')) { this.menus.showWorldSettings(); return; }
     if (i.hit('F1')) { this.hudHidden = !this.hudHidden; this.hud.setHidden(this.hudHidden); }
     if (i.hit('F3')) this.hud.toggleDebug();
+    if (i.hit('F2')) this.wantScreenshot = true;
+    if (i.hit('KeyJ')) { this.settings.showMinimap = this.settings.showMinimap === false; this.message(this.settings.showMinimap ? 'Minimap on' : 'Minimap off'); }
     if (i.hit('F5') || i.hit('KeyV') && !this.holding('copy')) this.thirdPerson = !this.thirdPerson;
     if (i.hit('KeyF') && this.creative && this.mode !== 'spectator') { this.player.flying = !this.player.flying; this.message(this.player.flying ? 'Flying' : 'Walking'); }
     if (i.hit('KeyN') && this.creative) {
@@ -423,6 +457,14 @@ export class Game {
     if (!this.thirdPerson && !p.dead && !this.hudHidden) {
       this.renderer.clearDepth();
       this.tools.renderViewModel(this.renderer, d, p);
+    }
+    if (this.wantScreenshot) {
+      this.wantScreenshot = false;
+      const a = document.createElement('a');
+      a.href = this.canvas.toDataURL('image/png');
+      a.download = `limitless-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      a.click();
+      this.message('Screenshot saved');
     }
   }
 }

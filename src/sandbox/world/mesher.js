@@ -181,6 +181,7 @@ export function meshChunk(chunks, opts = {}) {
     else if (shape === 2) torch(target, block, x, y, z, i);
     else if (shape === 3) liquid(LIQUID[id] === 2 ? out.opaque : out.translucent, block, id, x, y, z, i);
     else if (shape === 4) slab(target, block, x, y, z, i);
+    else if (shape === 5) door(target, block, id, x, y, z, i);
   }
   return { opaque: out.opaque.result(), cutout: out.cutout.result(), translucent: out.translucent.result() };
 }
@@ -282,16 +283,16 @@ function crossShape(b, block, x, y, z, i) {
   }
 }
 
-function box(b, layer, x, y, z, x0, y0, z0, x1, y1, z1, s, l, uvBox, skip) {
+function box(b, layer, x, y, z, x0, y0, z0, x1, y1, z1, s, l, uvBox, skip, topLayer = layer) {
   // uvBox: [u0, v0, u1, v1] for the side faces and the top face uses [tu0, tv0, tu1, tv1]
   const [su0, sv0, su1, sv1, tu0, tv0, tu1, tv1] = uvBox;
-  const P = (px, py, pz, u, v, shade) => b.vertex(x + px, y + py, z + pz, u, v, layer, s, l, 1, shade);
+  const P = (px, py, pz, u, v, shade, lay = layer) => b.vertex(x + px, y + py, z + pz, u, v, lay, s, l, 1, shade);
   // +x
   if (!skip?.[0]) b.quad(P(x1, y0, z1, su0, sv0, 0.8), P(x1, y0, z0, su1, sv0, 0.8), P(x1, y1, z0, su1, sv1, 0.8), P(x1, y1, z1, su0, sv1, 0.8), false);
   // -x
   if (!skip?.[1]) b.quad(P(x0, y0, z0, su0, sv0, 0.8), P(x0, y0, z1, su1, sv0, 0.8), P(x0, y1, z1, su1, sv1, 0.8), P(x0, y1, z0, su0, sv1, 0.8), false);
   // +y
-  if (!skip?.[2]) b.quad(P(x0, y1, z0, tu0, tv0, 1), P(x0, y1, z1, tu0, tv1, 1), P(x1, y1, z1, tu1, tv1, 1), P(x1, y1, z0, tu1, tv0, 1), false);
+  if (!skip?.[2]) b.quad(P(x0, y1, z0, tu0, tv0, 1, topLayer), P(x0, y1, z1, tu0, tv1, 1, topLayer), P(x1, y1, z1, tu1, tv1, 1, topLayer), P(x1, y1, z0, tu1, tv0, 1, topLayer), false);
   // -y
   if (!skip?.[3]) b.quad(P(x0, y0, z0, tu0, tv0, 0.55), P(x1, y0, z0, tu1, tv0, 0.55), P(x1, y0, z1, tu1, tv1, 0.55), P(x0, y0, z1, tu0, tv1, 0.55), false);
   // +z
@@ -314,7 +315,17 @@ function slab(b, block, x, y, z, i) {
   };
   const skip = [OPAQUE[n(1, 0, 0)] || n(1, 0, 0) === block.id, OPAQUE[n(-1, 0, 0)] || n(-1, 0, 0) === block.id, false, OPAQUE[n(0, -1, 0)], OPAQUE[n(0, 0, 1)] || n(0, 0, 1) === block.id, OPAQUE[n(0, 0, -1)] || n(0, 0, -1) === block.id];
   const [s, l] = ownLight(i);
-  box(b, block.faceTex[0], x, y, z, 0, 0, 0, 1, 0.5, 1, s, l, [0, 0, 1, 0.5, 0, 0, 1, 1], skip);
+  box(b, block.faceTex[0], x, y, z, 0, 0, 0, 1, 0.5, 1, s, l, [0, 0, 1, 0.5, 0, 0, 1, 1], skip, block.faceTex[2]);
+}
+
+function door(b, block, id, x, y, z, i) {
+  const below = y > 0 ? vox[i - RA] : 0;
+  const top = BLOCKS[below]?.door;
+  const layer = top ? block.topTex : block.faceTex[0];
+  const [x0, y0, z0, x1, y1, z1] = block.boxes[0];
+  const [s, l] = ownLight(i);
+  // Thin panel: texture spans the wide faces; the edges use a sliver.
+  box(b, layer, x, y, z, x0, y0, z0, x1, y1, z1, s, l, [0, 0, 1, 1, 0, 0, 1, 3 / 16], null, block.faceTex[0]);
 }
 
 function liquid(b, block, id, x, y, z, i) {

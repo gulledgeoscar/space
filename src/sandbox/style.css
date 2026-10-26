@@ -132,6 +132,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .vehicle-info b { font-size: 24px; }
 .hpbar { width: 200px; height: 6px; background: rgba(0,0,0,0.5); margin: 4px auto 2px; }
 .hpbar div { height: 100%; background: linear-gradient(90deg, #e05040, #f0d040, #60d060); }
+.sleep-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1.2s; z-index: 2; }
 .vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.35) 100%); }
 .water-tint { position: absolute; inset: 0; background: rgba(20, 60, 160, 0.35); opacity: 0; transition: opacity .2s; }
 .fire-tint { position: absolute; inset: 0; background: radial-gradient(ellipse at center bottom, rgba(255,120,0,0.6), rgba(255,60,0,0.2) 60%, transparent); opacity: 0; transition: opacity .2s; }
@@ -212,3 +213,5 @@ body.touch .msgs { bottom: 160px; }
   .bottom { bottom: 4px; }
 }
 body.touch .topright { right: auto; left: 12px; text-align: left; }
+.minimap { display: block; margin: 6px 0 4px auto; width: 144px; height: 144px; border: 2px solid rgba(0,0,0,0.6); border-radius: 6px; image-rendering: pixelated; opacity: .9; }
+body.touch .minimap { width: 96px; height: 96px; margin-left: 0; }

@@ -17,7 +17,7 @@ export const CONTROLS = [
   ['Left click', 'Break / attack / fire'], ['Right click', 'Place / use / interact / ride'], ['Middle click', 'Pick block'], ['1–9 / wheel', 'Hotbar'],
   ['E', 'Inventory & spawn menu'], ['G', 'World controls (time, weather, gravity…)'], ['T or /', 'Chat & commands'], ['R', 'Get in / out of vehicles · reload'],
   ['Q', 'Drop item'], ['F', 'Toggle flying (creative) · flip car'], ['N', 'Noclip'], ['M', 'Cycle game mode'], ['F5 / V', 'Third person'], ['Z', 'Zoom'],
-  ['K', 'Skip time +6h'], ['L', 'Cycle weather'], ['P', 'Slow-mo / freeze time'], ['B', 'Set spawn point'], ['Alt + wheel', 'Tool size'], ['F1', 'Hide HUD'], ['F3', 'Debug info'], ['Esc', 'Pause'],
+  ['J', 'Minimap'], ['F2', 'Screenshot'], ['K', 'Skip time +6h'], ['L', 'Cycle weather'], ['P', 'Slow-mo / freeze time'], ['B', 'Set spawn point'], ['Alt + wheel', 'Tool size'], ['F1', 'Hide HUD'], ['F3', 'Debug info'], ['Esc', 'Pause'],
 ];
 
 export class Menus {
@@ -55,8 +55,9 @@ export class Menus {
     if (e.code === 'Escape') {
       e.preventDefault();
       if (this.open === 'pause' || this.open === 'death') return;
+      if (this.open === 'chest') { this.close(true); return; }
       this.close(true);
-    } else if ((e.code === 'KeyE' && this.open === 'inventory' && document.activeElement?.tagName !== 'INPUT') || (e.code === 'KeyG' && this.open === 'world')) {
+    } else if ((e.code === 'KeyE' && (this.open === 'inventory' || this.open === 'chest') && document.activeElement?.tagName !== 'INPUT') || (e.code === 'KeyG' && this.open === 'world')) {
       e.preventDefault();
       this.close(true);
     }
@@ -162,6 +163,7 @@ export class Menus {
       <label class="check"><input type="checkbox" data-k="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
       <label class="check"><input type="checkbox" data-k="viewBob" ${s.viewBob !== false ? 'checked' : ''}> View bobbing</label>
       <label class="check"><input type="checkbox" data-k="showCoords" ${s.showCoords !== false ? 'checked' : ''}> Show coordinates &amp; time</label>
+      <label class="check"><input type="checkbox" data-k="showMinimap" ${s.showMinimap !== false ? 'checked' : ''}> Minimap <kbd>J</kbd></label>
       <button class="primary">Done</button>
     </div></div>`);
     const labels = { renderDistance: 'rd', fov: 'fov', sensitivity: 'sens', volume: 'vol', pixelRatio: 'pr', music: 'mus' };
@@ -360,6 +362,69 @@ export class Menus {
     search.oninput = () => { this.search = search.value; renderCatalog(); };
     search.onkeydown = (e) => { e.stopPropagation(); if (e.code === 'Escape') this.close(true); };
     renderCatalog();
+  }
+
+  // A chest: its 27 slots above your backpack and hotbar.
+  showChest(key) {
+    const g = this.game;
+    const items = g.chest(key);
+    const el = h(`<div class="overlay"><div class="card inventory">
+      <h2>Chest</h2><div class="grid chest"></div><div class="desc"></div>
+      <div class="grid main"></div><div class="grid hot"></div>
+      <p class="sub">Click to pick up and place stacks. Shift-click moves a stack across.</p></div></div>`);
+    this.show('chest', el);
+    const inv = g.inventory;
+    const chestSlots = { get: (i) => items[i], set: (i, s) => { items[i] = s; } };
+    const invSlots = { get: (i) => inv.getSlot(i), set: (i, s) => inv.setSlot(i, s) };
+    const render = () => {
+      const fill = (sel, store, from, n) => {
+        const grid = el.querySelector(sel);
+        grid.innerHTML = '';
+        for (let k = 0; k < n; k++) {
+          const i = from + k;
+          const s = store.get(i);
+          const d = document.createElement('div');
+          d.className = 'slot';
+          const url = iconFor(g, s);
+          d.innerHTML = `${url ? `<img src="${url}" alt="">` : ''}${s && s.count > 1 ? `<span class="count">${s.count}</span>` : ''}`;
+          d.onmouseenter = () => { el.querySelector('.desc').textContent = stackName(s); };
+          const click = (e, right) => {
+            e.preventDefault();
+            if (e.shiftKey && s) {
+              const other = store === chestSlots ? invSlots : chestSlots;
+              const n2 = store === chestSlots ? 36 : 27;
+              for (let j = 0; j < n2; j++) if (!other.get(j)) { other.set(j, s); store.set(i, null); break; }
+            } else this.cursorClickOn(store, i, right);
+            g.hud.refresh();
+            render();
+          };
+          d.onclick = (e) => click(e, false);
+          d.oncontextmenu = (e) => click(e, true);
+          grid.appendChild(d);
+        }
+      };
+      fill('.chest', chestSlots, 0, 27);
+      fill('.main', invSlots, 9, 27);
+      fill('.hot', invSlots, 0, 9);
+    };
+    render();
+  }
+
+  cursorClickOn(store, i, right) {
+    const slot = store.get(i);
+    const c = this.cursor;
+    if (!c) {
+      if (!slot) return;
+      if (right && slot.count > 1) { const half = Math.ceil(slot.count / 2); this.cursor = { ...slot, count: half }; slot.count -= half; }
+      else { this.cursor = slot; store.set(i, null); }
+    } else if (!slot) {
+      if (right) { store.set(i, { ...c, count: 1 }); c.count--; if (!c.count) this.cursor = null; }
+      else { store.set(i, c); this.cursor = null; }
+    } else if (sameItem(slot, c) && stackable(c)) {
+      const n = Math.min(right ? 1 : c.count, MAX_STACK - slot.count);
+      slot.count += n; c.count -= n;
+      if (!c.count) this.cursor = null;
+    } else { store.set(i, c); this.cursor = slot; }
   }
 
   // Survival: pick up / drop / swap stacks with the mouse.

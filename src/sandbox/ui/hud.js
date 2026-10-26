@@ -5,6 +5,7 @@ import { iconFor } from './icons.js';
 import { stackName, TOOLS } from '../items/items.js';
 import { BIOME_NAMES } from '../world/generator.js';
 import { BLOCKS } from '../world/blocks.js';
+import { Minimap } from './minimap.js';
 
 const HEART = (fill) => `<svg viewBox="0 0 9 9" width="18" height="18" shape-rendering="crispEdges"><path d="M1 1h3v1h1V1h3v1h1v3H8v1H7v1H6v1H5v1H4V8H3V7H2V6H1V5H0V2h1z" fill="#1a0a0a"/><path d="M1 2h2v1h1v1h1V3h1V2h2v3H7v1H6v1H5v1H4V7H3V6H2V5H1z" fill="${fill}"/>${fill !== '#3a1010' ? '<path d="M2 3h1v1H2z" fill="#ffb0b0"/>' : ''}</svg>`;
 const FOOD = (on) => `<svg viewBox="0 0 9 9" width="18" height="18" shape-rendering="crispEdges"><path d="M4 1h3v1h1v3H7v1H5v1H4v1H2V7H1V5h1V4h1V2h1z" fill="#1a0a00"/><path d="M4 2h3v3H6v1H4V5H3V3h1z" fill="${on ? '#c87830' : '#3a2010'}"/><path d="M2 6h1v1H2z" fill="${on ? '#eee' : '#555'}"/></svg>`;
@@ -25,6 +26,7 @@ export class Hud {
   build() {
     this.root.innerHTML = `
       <div class="vignette"></div>
+      <div class="sleep-fade"></div>
       <div class="water-tint"></div>
       <div class="fire-tint"></div>
       <div class="damage-tint"></div>
@@ -53,6 +55,7 @@ export class Hud {
     `;
     this.el = (sel) => this.root.querySelector(sel);
     this.hotbarEl = this.el('.hotbar');
+    this.minimap = new Minimap(this.game, this.el('.topright'));
     this.slots = [];
     for (let i = 0; i < 9; i++) {
       const s = document.createElement('div');
@@ -112,6 +115,13 @@ export class Hud {
   }
 
   flashDamage() { this.damageFlash = 1; }
+
+  // Fade to black, run fn at the darkest point, fade back.
+  fade(fn) {
+    const el = this.el('.sleep-fade');
+    el.style.opacity = 1;
+    setTimeout(() => { fn(); setTimeout(() => { el.style.opacity = 0; }, 400); }, 1300);
+  }
 
   speech(entity, text) {
     let b = this.bubbles.get(entity);
@@ -194,6 +204,8 @@ export class Hud {
       const extra = v.type === 'plane' ? ` · throttle ${Math.round(v.throttle * 100)}% · alt ${Math.round(v.pos.y)}` : v.type === 'helicopter' ? ` · alt ${Math.round(v.pos.y)}` : '';
       vi.innerHTML = `<b>${Math.round(sp * 3.6)}</b> km/h${extra}<div class="hpbar"><div style="width:${hp * 100}%"></div></div>`;
     } else vi.style.display = 'none';
+
+    this.minimap?.update(dt);
 
     // Boss health.
     const boss = g.entities.list.find((e) => e.type === 'dragon' && !e.removed && e.pos.distanceTo(p.position) < 160);

@@ -195,16 +195,18 @@ A second game lives in this repo: **LIMITLESS**, a first-person voxel sandbox wh
 ## What you can do
 
 - **Explore** an endless generated world: oceans, beaches, plains, forests, birch and cherry groves, taiga, snowy tundra and peaks, deserts, badlands, jungles, swamps, mushroom fields. Caves, ores and lava pools are underground. You can also start a Superflat world.
-- **Build and break** with 130+ blocks: wood, stone, glass, wool, concrete, neon, lamps, slime, bounce pads and speed pads.
+- **Build and break** with 130+ blocks: wood, stone, glass, wool, concrete, neon, lamps, slime, bounce pads and speed pads. Doors open and close, beds skip the night and set your spawn point, chests store items, and note blocks play music.
+- **Visit villages** spread across the world. Each has houses, farms, towers and a well, with villagers and an iron golem guarding them.
 - **Watch the world react.** Water and lava flow and turn into obsidian or cobblestone where they meet. Fire spreads through wood and leaves. Sand and gravel fall. TNT chain-reacts and throws blocks around as physics debris.
 - **Weapons:** pistol, assault rifle, shotgun, sniper rifle with scope, rocket launcher, grenades, flamethrower, mining laser, lightning staff, snowballs and fireworks.
 - **Tools:** gravity gun (pick up and throw creatures, props or chunks of the world), terraformer, builder wand (spheres, cubes, cylinders, pyramids, walls), paint brush (it also dyes sheep), copy and paste, remover, teleport gun, grappling hook, jetpack, resize ray and freeze ray.
-- **Creatures:** pigs, cows, sheep, chickens, dogs you can tame, horses you can ride, villagers, and an iron golem. Animals breed when you feed them. At night zombies, skeletons, spiders and Bombers come out, and they burn in daylight.
+- **Creatures:** pigs, cows, sheep, chickens, fish, dogs you can tame, horses you can ride, villagers, and an iron golem. Animals breed when you feed them. At night zombies, skeletons, spiders and Bombers come out, and they burn in daylight. There is also a fire-breathing **dragon** boss to summon.
 - **Vehicles:** car, monster truck, tank, boat, plane and helicopter. The helicopter fires rockets, the plane has guns and the tank fires shells.
 - **Props:** crates, explosive barrels, beach and bowling balls, watermelons, dominoes, a jointed ragdoll dummy, and a nuke.
 - **Instant structures:** house, tower, castle, pyramid with a trapped treasure room, skyscraper, giant tree, glass dome, stunt ramp, arena, swimming pool, and a volcano with lava running down it.
 - **Control the world** with the **G** menu or commands: time of day and day length, weather (rain, snow, thunderstorms with lightning), gravity (Moon, Mars, Earth, Jupiter), slow motion and frozen time, game mode (creative, survival, spectator), difficulty, walk speed and jump height.
-- **Survival mode** adds health, hunger, air, fall damage, mining times and item drops.
+- **Survival mode** adds health, hunger, air, fall damage, mining times and item drops. Ores drop coal, iron, gold, diamonds and emeralds, and monsters drop gunpowder and string. Craft blocks, tools, weapons, a jetpack, a gravity gun and even a car from the inventory screen.
+- **Play anywhere:** keyboard and mouse, a gamepad, or touch controls on phones and tablets. There's a minimap (J), screenshots (F2) and generative ambient music.
 - Worlds **save automatically** to your browser (IndexedDB): blocks you changed, creatures, vehicles, your inventory and the time.
 
 ## Sandbox controls

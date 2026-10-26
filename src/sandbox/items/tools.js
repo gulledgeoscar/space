@@ -1,7 +1,7 @@
 // What happens when you click: breaking and placing blocks, attacking, and
 // every tool and weapon. Also draws the block highlight and the held item.
 import * as THREE from 'three';
-import { BLOCKS, B, SOLID, LIQUID, SHAPE } from '../world/blocks.js';
+import { BLOCKS, B, SOLID, LIQUID, SHAPE, DOOR, isDoor } from '../world/blocks.js';
 import { TOOLS, SPAWNS, stackName } from './items.js';
 import { blockMesh, artMesh } from '../entities/blockMesh.js';
 import { buildStructure } from '../world/structures.js';
@@ -268,7 +268,7 @@ export class Tools {
     // Place / interact; holding right-click keeps placing.
     const canPlace = () => sel?.kind === 'block' && t && t.dist <= reach && this.placeBlock(t, sel.id);
     if (input.click(2)) {
-      this.holdPlace = !this.interact();
+      this.holdPlace = !this.interact() && !(t && t.dist <= reach && !g.input.key('ShiftLeft') && this.useBlockAt(t));
       if (this.holdPlace) { canPlace(); this.placeRepeat = 0.3; }
     } else if (input.mouse(2) && this.holdPlace) {
       this.placeRepeat -= dt;
@@ -322,7 +322,7 @@ export class Tools {
         return;
       }
       const leaves = BLOCKS[id].render === 'cutout' && BLOCKS[id].shape === 'cube' && BLOCKS[id].key.endsWith('leaves');
-      const drop = id === B.grass || id === B.mycelium ? B.dirt : id === B.stone ? B.cobble : id === B.glass ? 0 : leaves ? (Math.random() < 0.08 ? -1 : 0) : id;
+      const drop = isDoor(id) ? DOOR : id === B.grass || id === B.mycelium ? B.dirt : id === B.stone ? B.cobble : id === B.glass ? 0 : leaves ? (Math.random() < 0.08 ? -1 : 0) : id;
       if (drop > 0) g.entities.dropItem({ x: x + 0.5, y: y + 0.3, z: z + 0.5 }, { kind: 'block', id: drop, count: 1 });
       if (drop === -1) g.entities.dropItem({ x: x + 0.5, y: y + 0.3, z: z + 0.5 }, { kind: 'tool', key: 'apple', count: 1 });
     }
@@ -332,6 +332,33 @@ export class Tools {
       g.world.setBlock(x, y + 1, z, 0);
       g.particles.blockBreak(x, y + 1, z, above, 6);
     }
+  }
+
+  // Right-click on doors, beds, chests and note blocks. Returns true if used.
+  useBlockAt(t) {
+    const g = this.game;
+    const id = t.id;
+    if (isDoor(id)) {
+      const d = BLOCKS[id].door;
+      const nid = DOOR + d.o * 2 + (d.open ? 0 : 1);
+      for (const dy of [-1, 0, 1]) if (isDoor(g.world.getBlock(t.x, t.y + dy, t.z))) g.world.setBlock(t.x, t.y + dy, t.z, nid);
+      g.audio.play('place', { material: 'wood', pos: t.point });
+      this.swing();
+      return true;
+    }
+    if (id === B.bed) { g.sleep(t); return true; }
+    if (id === B.chest) { g.menus.showChest(`${t.x},${t.y},${t.z}`); return true; }
+    if (id === B.note_block) {
+      const k = `${t.x},${t.y},${t.z}`;
+      this.notes ??= new Map();
+      const n = ((this.notes.get(k) ?? -1) + 1) % 25;
+      this.notes.set(k, n);
+      g.audio.play('note', { f: 185 * 2 ** (n / 12), pos: t.point });
+      g.particles.sparkle(new THREE.Vector3(t.x + 0.5, t.y + 1.2, t.z + 0.5), new THREE.Color().setHSL(n / 25, 1, 0.6).getHex(), 4);
+      this.swing();
+      return true;
+    }
+    return false;
   }
 
   placeBlock(t, id) {
@@ -347,6 +374,14 @@ export class Tools {
       if (x + 1 > b.x - b.hw && x < b.x + b.hw && z + 1 > b.z - b.hw && z < b.z + b.hw && y + 1 > b.y && y < b.y + b.h) return false;
       const box = new THREE.Box3(new THREE.Vector3(x, y, z), new THREE.Vector3(x + 1, y + 1, z + 1));
       for (const e of g.entities.list) if (e.kind === 'mob' && e.bounds().intersectsBox(box)) return false;
+    }
+    if (id === DOOR) {
+      // Doors are two blocks tall and face away from you.
+      const above = g.world.getBlock(x, y + 1, z);
+      if (above !== 0 && SHAPE[above] !== 1) return false;
+      const o = ((Math.round(p.yaw / (Math.PI / 2)) % 4) + 4) % 4;
+      id = DOOR + o * 2;
+      g.world.setBlock(x, y + 1, z, id);
     }
     if (g.world.setBlock(x, y, z, id)) {
       g.audio.play('place', { material: BLOCKS[id].sound, pos: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
@@ -407,7 +442,7 @@ export class Tools {
           else this.mining = null;
         } else this.mining = null;
         this.breakRepeat -= dt;
-        if (Rc) this.interact();
+        if (Rc && !this.interact() && t && t.dist <= 6) this.useBlockAt(t);
         break;
       }
       case 'rocket':

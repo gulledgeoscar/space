@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = {
   invertY: false,
   viewBob: true,
   showCoords: true,
+  showMinimap: true,
   speedMult: 1,
   jumpMult: 1,
 };
