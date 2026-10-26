@@ -218,9 +218,16 @@ export class Tools {
     }
     if (key && GUNS[key] && input.hit('KeyR') && !g.entities.raycast(eye, dir, 5, (e) => e.rideable)) this.reload(key);
 
-    if (!sel || sel.kind === 'block') this.useBlock(dt, input, sel);
-    else if (sel.kind === 'tool') this.useTool(dt, input, key);
-    else if (sel.kind === 'spawn') this.useSpawn(input, sel);
+    // Everything the player builds or breaks this frame is one undo step,
+    // merged with the previous one while a mouse button stays held.
+    g.beginEdit();
+    try {
+      if (!sel || sel.kind === 'block') this.useBlock(dt, input, sel);
+      else if (sel.kind === 'tool') this.useTool(dt, input, key);
+      else if (sel.kind === 'spawn') this.useSpawn(input, sel);
+    } finally {
+      g.endEdit((input.mouse(0) || input.mouse(2)) && !input.click(0) && !input.click(2));
+    }
 
     this.crack.visible = !!this.mining;
     if (this.mining) {

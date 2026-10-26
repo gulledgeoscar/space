@@ -17,7 +17,7 @@ export const CONTROLS = [
   ['Left click', 'Break / attack / fire'], ['Right click', 'Place / use / interact / ride'], ['Middle click', 'Pick block'], ['1–9 / wheel', 'Hotbar'],
   ['E', 'Inventory & spawn menu'], ['G', 'World controls (time, weather, gravity…)'], ['T or /', 'Chat & commands'], ['R', 'Get in / out of vehicles · reload'],
   ['Q', 'Drop item'], ['F', 'Toggle flying (creative) · flip car'], ['N', 'Noclip'], ['M', 'Cycle game mode'], ['F5 / V', 'Third person'], ['Z', 'Zoom'],
-  ['J', 'Minimap'], ['F2', 'Screenshot'], ['K', 'Skip time +6h'], ['L', 'Cycle weather'], ['P', 'Slow-mo / freeze time'], ['B', 'Set spawn point'], ['Alt + wheel', 'Tool size'], ['F1', 'Hide HUD'], ['F3', 'Debug info'], ['Esc', 'Pause'],
+  ['Ctrl+Z / Ctrl+Y', 'Undo / redo building'], ['J', 'Minimap'], ['F2', 'Screenshot'], ['K', 'Skip time +6h'], ['L', 'Cycle weather'], ['P', 'Slow-mo / freeze time'], ['B', 'Set spawn point'], ['Alt + wheel', 'Tool size'], ['F1', 'Hide HUD'], ['F3', 'Debug info'], ['Esc', 'Pause'],
 ];
 
 export class Menus {

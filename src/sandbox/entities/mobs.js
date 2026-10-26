@@ -159,6 +159,17 @@ export class Mob extends VoxelEntity {
     const s = g.inventory.selected;
     if (s?.kind === 'tool' && (g.tools.isFood(s.key)) && this.feed(s)) { if (!g.creative) g.inventory.consumeSelected(); return true; }
     if (this.tamed && this.type === 'wolf') { this.sitting = !this.sitting; this.target = null; g.message(this.sitting ? 'Sit.' : 'Come on!'); return true; }
+    if (this.type === 'villager' && s?.kind === 'tool' && s.key === 'emerald') {
+      const offers = [['diamond', 1], ['iron', 4], ['gold', 3], ['bread', 4], ['steak', 3], ['apple', 5], ['gunpowder', 3], ['fireworks', 4], ['jetpack', 1], ['grapple', 1], ['portal', 1]];
+      const [key, count] = offers[(Math.random() * offers.length) | 0];
+      g.inventory.consumeSelected();
+      const left = g.inventory.add({ kind: 'tool', key, count });
+      if (left) g.entities.dropItem(this.center, { kind: 'tool', key, count: left });
+      this.say(`A fine emerald! Here: ${count} × ${key}.`);
+      g.particles.sparkle(this.center, 0x40e080, 14);
+      g.audio.play('levelup');
+      return true;
+    }
     if (this.type === 'villager') { this.say(VILLAGER_LINES[(Math.random() * VILLAGER_LINES.length) | 0]); this.lookAtPlayer = 3; return true; }
     if (this.rideable) { g.entities.mount(player, this); return true; }
     return false;

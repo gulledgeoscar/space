@@ -53,6 +53,9 @@ export class Game {
     this.chests = new Map(); // "x,y,z" -> 27 slots
     this.populatedVillages = new Set();
     this.visitedChunks = new Set();
+    this.undoStack = [];
+    this.redoStack = [];
+    this.editDepth = 0;
     this.dim = 'earth';
     this.dimStates = {}; // per-dimension entities, gravity and spawn point
 
@@ -315,6 +318,38 @@ export class Game {
 
   message(text, color) { this.hud.message(text, color); }
 
+  // Undo history: block changes made by the player between begin/endEdit
+  // become one step. Holding the mouse keeps adding to the same step.
+  beginEdit() {
+    if (this.editDepth++ === 0) this.world.recording = [];
+  }
+
+  endEdit(merge = false) {
+    if (--this.editDepth > 0) return;
+    const rec = this.world.recording;
+    this.world.recording = null;
+    if (!rec?.length) { if (!merge) this.mergeEdit = false; return; }
+    const last = this.undoStack[this.undoStack.length - 1];
+    if (merge && this.mergeEdit && last && last.length + rec.length < 3e6) last.push(...rec);
+    else this.undoStack.push(rec);
+    if (this.undoStack.length > 60) this.undoStack.shift();
+    this.redoStack = [];
+    this.mergeEdit = true;
+  }
+
+  undo(redo = false) {
+    const from = redo ? this.redoStack : this.undoStack;
+    const rec = from.pop();
+    if (!rec) { this.message(redo ? 'Nothing to redo' : 'Nothing to undo'); return; }
+    const n = rec.length / 5;
+    if (redo) for (let i = 0; i < rec.length; i += 5) this.world.setBlock(rec[i], rec[i + 1], rec[i + 2], rec[i + 4]);
+    else for (let i = rec.length - 5; i >= 0; i -= 5) this.world.setBlock(rec[i], rec[i + 1], rec[i + 2], rec[i + 3]);
+    (redo ? this.undoStack : this.redoStack).push(rec);
+    this.mergeEdit = false;
+    this.message(`${redo ? 'Redid' : 'Undid'} ${n} block change${n === 1 ? '' : 's'}`);
+    this.audio.play('click');
+  }
+
   chest(key) {
     if (!this.chests.has(key)) this.chests.set(key, new Array(27).fill(null));
     return this.chests.get(key);
@@ -341,7 +376,10 @@ export class Game {
     });
   }
 
-  command(text) { return runCommand(this, text); }
+  command(text) {
+    this.beginEdit();
+    try { return runCommand(this, text); } finally { this.endEdit(); }
+  }
 
   onPlayerDeath(cause) {
     const msgs = {
@@ -390,7 +428,10 @@ export class Game {
       else this.entities.tryMount(this.player);
     }
     if (i.hit('KeyQ')) this.inventory.dropSelected(i.key('ControlLeft'));
-    if (i.hit('KeyZ')) this.zoomToggle = !this.zoomToggle;
+    const ctrl = i.key('ControlLeft') || i.key('ControlRight') || i.key('MetaLeft');
+    if (i.hit('KeyZ') && ctrl) this.undo(i.key('ShiftLeft'));
+    else if (i.hit('KeyY') && ctrl) this.undo(true);
+    else if (i.hit('KeyZ')) this.zoomToggle = !this.zoomToggle;
     if (i.hit('KeyK')) { this.hours = (this.hours + 6) % 24; this.message(`Time: ${this.timeString()}`); }
     if (i.hit('KeyL')) this.weather.cycle();
     if (i.hit('KeyP')) this.setTimeScale(this.timeScale === 1 ? 0.25 : this.timeScale === 0.25 ? 0 : 1);

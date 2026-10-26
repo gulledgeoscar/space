@@ -229,8 +229,10 @@ A second game lives in this repo: **LIMITLESS**, a first-person voxel sandbox wh
 | F, N, M | Fly, noclip, cycle game mode |
 | K, L, P | Skip 6 hours, cycle weather, slow motion |
 | Alt + wheel | Tool size |
+| Ctrl+Z / Ctrl+Y | Undo / redo building |
+| J, F2 | Minimap, screenshot |
 
-Some commands: `/give <item>`, `/summon <thing> [n]`, `/rain pig 30`, `/build castle`, `/gravity moon`, `/time set night`, `/weather storm`, `/locate jungle`, `/explode 8`, `/nuke`, `/size 0.25`.
+Villagers trade an emerald for a random reward. Some commands: `/travel moon`, `/give <item>`, `/summon <thing> [n]`, `/rain pig 30`, `/build castle`, `/gravity moon`, `/time set night`, `/weather storm`, `/locate jungle`, `/explode 8`, `/nuke`, `/size 0.25`.
 
 ## How it works
 

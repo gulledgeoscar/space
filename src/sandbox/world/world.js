@@ -69,6 +69,7 @@ export class World {
     const cores = navigator.hardwareConcurrency || 4;
     this.pool = new WorkerPool(Math.max(2, Math.min(6, cores - 1)));
     this.listeners = [];
+    this.recording = null; // undo log: flat [x, y, z, old, new, ...]
     this.center = { cx: 0, cz: 0 };
     this.genInFlight = 0;
     this.urgent = new Set();
@@ -113,6 +114,7 @@ export class World {
     if (old === id) return false;
     c.data[i] = id;
     c.modified = true;
+    if (this.recording) this.recording.push(x, y, z, old, id);
     this.markDirty(cx, cz, true);
     // Light can travel up to 15 blocks, but the visible effect beyond the
     // touching neighbours is small, so those refresh at normal priority.

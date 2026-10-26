@@ -27,7 +27,7 @@ export class Input {
     const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); this.listeners.push([target, type, fn, opts]); };
     on(window, 'keydown', (e) => {
       if (this.typing || (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
-      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'F3', 'F2', 'Slash', 'KeyT'].includes(e.code) || (e.ctrlKey && ['KeyS', 'KeyW', 'KeyD'].includes(e.code))) e.preventDefault();
+      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'F3', 'F2', 'Slash', 'KeyT'].includes(e.code) || (e.ctrlKey && ['KeyS', 'KeyW', 'KeyD', 'KeyZ', 'KeyY'].includes(e.code))) e.preventDefault();
       if (!this.down.has(e.code)) {
         this.pressed.add(e.code);
         const now = performance.now();
