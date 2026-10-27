@@ -185,3 +185,67 @@ All presets use generated normal maps for hull plating, interior panels and floo
 
 - `?mission=N&stage=ID` in the URL jumps straight to a mission stage (for example `?mission=5`, `?mission=3&stage=descent`).
 - `window.meridian` is the game instance, and `window.meridianDev` holds the scenario helpers.
+
+---
+
+# LIMITLESS (sandbox)
+
+A second game lives in this repo: **LIMITLESS**, a first-person voxel sandbox where you can do more or less anything. It runs at `/sandbox/` (`npm run dev`, then open http://localhost:5173/sandbox/). On GitHub Pages it's at **https://gulledgeoscar.github.io/space/sandbox/**.
+
+## What you can do
+
+- **Explore** an endless generated world: oceans, beaches, plains, forests, birch and cherry groves, taiga, snowy tundra and peaks, deserts, badlands, jungles, swamps, mushroom fields. Caves, ores and lava pools are underground. You can also start a Superflat world.
+- **Build and break** with 130+ blocks: wood, stone, glass, wool, concrete, neon, lamps, slime, bounce pads and speed pads. Doors open and close, beds skip the night and set your spawn point, chests store items, and note blocks play music.
+- **Visit villages** spread across the world. Each has houses, farms, towers and a well, with villagers and an iron golem guarding them.
+- **Watch the world react.** Water and lava flow and turn into obsidian or cobblestone where they meet. Fire spreads through wood and leaves. Sand and gravel fall. TNT chain-reacts and throws blocks around as physics debris.
+- **Weapons:** pistol, assault rifle, shotgun, sniper rifle with scope, rocket launcher, grenades, flamethrower, mining laser, lightning staff, snowballs and fireworks.
+- **Tools:** gravity gun (pick up and throw creatures, props or chunks of the world), terraformer, builder wand (spheres, cubes, cylinders, pyramids, walls), paint brush (it also dyes sheep), copy and paste, remover, teleport gun, grappling hook, jetpack, resize ray and freeze ray.
+- **Creatures:** pigs, cows, sheep, chickens, fish, dogs you can tame, horses you can ride, villagers, and an iron golem. Animals breed when you feed them. At night zombies, skeletons, spiders and Bombers come out, and they burn in daylight. There is also a fire-breathing **dragon** boss to summon.
+- **Vehicles:** car, monster truck, tank, boat, plane and helicopter. The helicopter fires rockets, the plane has guns and the tank fires shells.
+- **Props:** crates, explosive barrels, beach and bowling balls, watermelons, dominoes, a jointed ragdoll dummy, and a nuke.
+- **Portal gun** (in through the blue, out of the orange), **signs** you write on, and **natural disasters**: a tornado that rips up the ground and flings everything, a meteor shower, and an earthquake.
+- **Fly to the Moon** in a rocket: climb above the clouds and you arrive on the Moon. It has low gravity, craters, glowing crystals, alien wreckage and aliens, with Earth hanging in a black, starry sky. Fly back the same way. Both worlds are saved.
+- **Instant structures:** house, tower, castle, pyramid with a trapped treasure room, skyscraper, giant tree, glass dome, stunt ramp, arena, swimming pool, and a volcano with lava running down it.
+- **Control the world** with the **G** menu or commands: time of day and day length, weather (rain, snow, thunderstorms with lightning), gravity (Moon, Mars, Earth, Jupiter), slow motion and frozen time, game mode (creative, survival, spectator), difficulty, walk speed and jump height.
+- **Survival mode** adds health, hunger, air, fall damage, mining times and item drops. Ores drop coal, iron, gold, diamonds and emeralds, and monsters drop gunpowder and string. Craft blocks, tools, weapons, a jetpack, a gravity gun and even a car from the inventory screen.
+- **Play anywhere:** keyboard and mouse, a gamepad, or touch controls on phones and tablets. There's a minimap (J), screenshots (F2) and generative ambient music.
+- Worlds **save automatically** to your browser (IndexedDB): blocks you changed, creatures, vehicles, your inventory and the time.
+
+## Sandbox controls
+
+| Key | Action |
+|-----|--------|
+| WASD, mouse | Move, look |
+| Space | Jump; double-tap to fly (creative) |
+| Shift / Ctrl | Sneak / sprint |
+| Left / right click | Break, attack, fire / place, use, ride |
+| Middle click | Pick block |
+| 1–9, wheel | Hotbar |
+| E | Inventory and spawn menu |
+| G | World controls |
+| T or / | Chat and commands (`/help`) |
+| R | Get in or out of vehicles; reload |
+| F5 or V | Third person |
+| F, N, M | Fly, noclip, cycle game mode |
+| K, L, P | Skip 6 hours, cycle weather, slow motion |
+| Alt + wheel | Tool size |
+| Ctrl+Z / Ctrl+Y | Undo / redo building |
+| J, F2 | Minimap, screenshot |
+
+Villagers trade an emerald for a random reward. Some commands: `/travel moon`, `/give <item>`, `/summon <thing> [n]`, `/rain pig 30`, `/build castle`, `/gravity moon`, `/time set night`, `/weather storm`, `/locate jungle`, `/explode 8`, `/nuke`, `/size 0.25`.
+
+## How it works
+
+| Path | What it does |
+|------|--------------|
+| `src/sandbox/world/generator.js` | Seeded terrain: continents, ridged mountains, rivers, biomes, caves, ores, trees |
+| `src/sandbox/world/mesher.js` | Sky and block light flood fill across a 3×3 chunk region, then meshing with smooth lighting and ambient occlusion |
+| `src/sandbox/world/worker.js`, `world.js` | Chunk streaming through a worker pool, block access and voxel raycasts |
+| `src/sandbox/world/atlas.js` | Every texture is painted procedurally into a texture array |
+| `src/sandbox/world/ticks.js` | Fluids, fire, falling blocks, TNT, grass |
+| `src/sandbox/physics/` | Box-vs-voxel movement for the player and creatures; cannon-es rigid bodies with on-demand voxel collision proxies |
+| `src/sandbox/entities/` | Creatures and their AI, props, ragdolls, vehicles, projectiles |
+| `src/sandbox/items/tools.js` | Every tool and weapon, and the first-person held item |
+| `src/sandbox/audio/sfx.js` | All sound is synthesised with WebAudio |
+
+`tests/sandbox.test.js` covers the noise, terrain, lighting, collision and save encoding.
